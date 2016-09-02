@@ -13,7 +13,7 @@
 #define CONFIG_SPL_MMC_SUPPORT
 
 #define CONFIG_ENV_IS_IN_MMC
-#define CONFIG_SYS_MMC_ENV_DEV 1
+#define CONFIG_SYS_MMC_ENV_DEV 0
 /* SPL @ 32k for ~36k
  * ENV @ 96k
  * u-boot @ 128K

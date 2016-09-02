@@ -33,6 +33,7 @@
 #define CONFIG_SYS_NS16550_MEM32
 #define CONFIG_SPL_BOARD_INIT
 
+
 #ifdef CONFIG_ROCKCHIP_SPL_BACK_TO_BROM
 /* Bootrom will load u-boot binary to 0x0 once return from SPL */
 #define CONFIG_SYS_TEXT_BASE		0x00000000
@@ -126,7 +127,6 @@
 /* First try to boot from SD (index 0), then eMMC (index 1 */
 #define BOOT_TARGET_DEVICES(func) \
 	func(MMC, mmc, 0) \
-	func(MMC, mmc, 1)
 
 #include <config_distro_bootcmd.h>
 
