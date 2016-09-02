@@ -159,16 +159,17 @@ void board_init_f(ulong dummy)
 	int ret;
 
 	/* Example code showing how to enable the debug UART on RK3288 */
-#ifdef EARLY_UART
+
 #include <asm/arch/grf_rk3288.h>
 	/* Enable early UART on the RK3288 */
 #define GRF_BASE	0xff770000
 	struct rk3288_grf * const grf = (void *)GRF_BASE;
 
-	rk_clrsetreg(&grf->gpio7ch_iomux, GPIO7C7_MASK << GPIO7C7_SHIFT |
-		     GPIO7C6_MASK << GPIO7C6_SHIFT,
-		     GPIO7C7_UART2DBG_SOUT << GPIO7C7_SHIFT |
-		     GPIO7C6_UART2DBG_SIN << GPIO7C6_SHIFT);
+	rk_clrsetreg(&grf->gpio5b_iomux,
+				GPIO5B1_MASK << GPIO5B1_SHIFT |
+				GPIO5B0_MASK << GPIO5B0_SHIFT,
+				GPIO5B1_UART1BB_SOUT << GPIO5B1_SHIFT |
+				GPIO5B0_UART1BB_SIN << GPIO5B0_SHIFT);
 	/*
 	 * Debug UART can be used from here if required:
 	 *
@@ -178,7 +179,7 @@ void board_init_f(ulong dummy)
 	 * printascii("string");
 	 */
 	debug_uart_init();
-#endif
+
 
 	ret = spl_init();
 	if (ret) {

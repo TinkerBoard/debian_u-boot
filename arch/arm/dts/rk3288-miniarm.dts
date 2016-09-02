@@ -12,7 +12,7 @@
 	compatible = "rockchip,rk3288-miniarm", "rockchip,rk3288";
 
 	chosen {
-		stdout-path = &uart2;
+		stdout-path = &uart1;
 	};
 };
 
@@ -75,7 +75,7 @@
 	status = "okay";
 };
 
-&uart2 {
+&uart1 {
 	u-boot,dm-pre-reloc;
 	reg-shift = <2>;
 };
