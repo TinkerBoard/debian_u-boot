@@ -314,7 +314,7 @@ __weak ulong board_get_usable_ram_top(ulong total_size)
 		 */
 		return 0;
 #endif
-	return min(gd->ram_top, 0x80000000);
+	return gd->ram_top;
 }
 
 __weak phys_size_t board_reserve_ram_top(phys_size_t ram_size)
