@@ -214,7 +214,7 @@ static void ddr_set_en_bst_odt(struct rk3288_grf *grf, uint channel,
 }
 
 static void pctl_cfg(u32 channel, struct rk3288_ddr_pctl *pctl,
-		     const struct rk3288_sdram_params *sdram_params,
+		     struct rk3288_sdram_params *sdram_params,
 		     struct rk3288_grf *grf)
 {
 	unsigned int burstlen;
@@ -264,7 +264,7 @@ static void pctl_cfg(u32 channel, struct rk3288_ddr_pctl *pctl,
 }
 
 static void phy_cfg(const struct chan_info *chan, u32 channel,
-		    const struct rk3288_sdram_params *sdram_params)
+		    struct rk3288_sdram_params *sdram_params)
 {
 	struct rk3288_ddr_publ *publ = chan->publ;
 	struct rk3288_msch *msch = chan->msch;
@@ -446,7 +446,7 @@ static void set_bandwidth_ratio(const struct chan_info *chan, u32 channel,
 }
 
 static int data_training(const struct chan_info *chan, u32 channel,
-			 const struct rk3288_sdram_params *sdram_params)
+			 struct rk3288_sdram_params *sdram_params)
 {
 	unsigned int j;
 	int ret = 0;
@@ -549,7 +549,7 @@ static void move_to_access_state(const struct chan_info *chan)
 }
 
 static void dram_cfg_rbc(const struct chan_info *chan, u32 chnum,
-			 const struct rk3288_sdram_params *sdram_params)
+			 struct rk3288_sdram_params *sdram_params)
 {
 	struct rk3288_ddr_publ *publ = chan->publ;
 
@@ -563,7 +563,7 @@ static void dram_cfg_rbc(const struct chan_info *chan, u32 chnum,
 }
 
 static void dram_all_config(const struct dram_info *dram,
-			    const struct rk3288_sdram_params *sdram_params)
+			    struct rk3288_sdram_params *sdram_params)
 {
 	unsigned int chan;
 	u32 sys_reg = 0;
@@ -589,28 +589,49 @@ static void dram_all_config(const struct dram_info *dram,
 	writel(sys_reg, &dram->pmu->sys_reg[2]);
 	rk_clrsetreg(&dram->sgrf->soc_con2, 0x1f, sdram_params->base.stride);
 }
+const int ddrconf_table[] =
+{
+	/* col	    row */
+	0,
+	((1 << 4) | 1),
+	((2 << 4) | 1),
+	((3 << 4) | 1),
+	((4 << 4) | 1),
+	((1 << 4) | 2),
+	((2 << 4) | 2),
+	((3 << 4) | 2),
+	((1 << 4) | 0),
+	((2 << 4) | 0),
+	((3 << 4) | 0),
+	0,
+	0,
+	0,
+	0,
+	((4 << 4) | 2),
+};
 
 static int sdram_init(struct dram_info *dram,
-		      const struct rk3288_sdram_params *sdram_params)
+		      struct rk3288_sdram_params *sdram_params)
 {
 	int channel;
 	int zqcr;
 	int ret;
+	int need_trainig = 0;
+	int stride = -1;
+	int row, col;
+	unsigned int addr;
 
-	debug("%s start\n", __func__);
 	if ((sdram_params->base.dramtype == DDR3 &&
 	     sdram_params->base.ddr_freq > 800000000) ||
 	    (sdram_params->base.dramtype == LPDDR3 &&
 	     sdram_params->base.ddr_freq > 533000000)) {
-		debug("SDRAM frequency is too high!");
+		printf("SDRAM frequency is too high!");
 		return -E2BIG;
 	}
 
-	debug("ddr clk dpll\n");
 	ret = clk_set_rate(&dram->ddr_clk, sdram_params->base.ddr_freq);
-	debug("ret=%d\n", ret);
 	if (ret) {
-		debug("Could not set DDR clock\n");
+		printf("Could not set DDR clock\n");
 		return ret;
 	}
 
@@ -618,12 +639,13 @@ static int sdram_init(struct dram_info *dram,
 		const struct chan_info *chan = &dram->chan[channel];
 		struct rk3288_ddr_pctl *pctl = chan->pctl;
 		struct rk3288_ddr_publ *publ = chan->publ;
-
+		if (channel)
+			rk_clrsetreg(&dram->sgrf->soc_con2, 0x1f, 0x17);
+		else
+			rk_clrsetreg(&dram->sgrf->soc_con2, 0x1f, 0x1a);
+		//printf("stride %x\n", readl(&dram->sgrf->soc_con2));
 		phy_pctrl_reset(dram->cru, publ, channel);
 		phy_dll_bypass_set(publ, sdram_params->base.ddr_freq);
-
-		if (channel >= sdram_params->num_channels)
-			continue;
 
 		dfi_cfg(pctl, sdram_params->base.dramtype);
 
@@ -658,16 +680,20 @@ static int sdram_init(struct dram_info *dram,
 			udelay(1);
 		}
 
+		/* Using 32bit bus width for detect */
+		sdram_params->ch[channel].bw = 2;
 		set_bandwidth_ratio(chan, channel,
 				    sdram_params->ch[channel].bw, dram->grf);
 		/*
-		 * set cs
+		 * set cs, using n=3 for detect
 		 * CS0, n=1
 		 * CS1, n=2
 		 * CS0 & CS1, n = 3
 		 */
+		sdram_params->ch[channel].rank = 2,
 		clrsetbits_le32(&publ->pgcr, 0xF << 18,
 				(sdram_params->ch[channel].rank | 1) << 18);
+
 		/* DS=40ohm,ODT=155ohm */
 		zqcr = 1 << ZDEN_SHIFT | 2 << PU_ONDIE_SHIFT |
 			2 << PD_ONDIE_SHIFT | 0x19 << PU_OUTPUT_SHIFT |
@@ -687,33 +713,179 @@ static int sdram_init(struct dram_info *dram,
 				send_command_op(pctl, 1, MRR_CMD, 8, 0);
 				/* S8 */
 				if ((readl(&pctl->mrrstat0) & 0x3) != 3) {
-					debug("failed!");
+					printf("failed!");
 					return -EREMOTEIO;
 				}
 			}
 		}
 
 		if (-1 == data_training(chan, channel, sdram_params)) {
+			int reg;
+			struct rk3288_ddr_publ *publ = chan->publ;
+			reg = readl(&publ->datx8[0].dxgsr[0]);
+			//printf("ch %d dx0gsr0 %x\n", channel, reg);
+			/* Check the result for rank 0 */
+			if ((channel == 0) && (reg & (1 << 4))) {
+				printf("data training fail!\n");
+					return -EIO;
+			} else if ((channel == 1) && (reg & (1 << 4))) {
+				sdram_params->num_channels = 1;
+			}
+
+			/* Check the result for rank 1 */
+			if (reg & (2 << 4)) {
+				sdram_params->ch[channel].rank = 1;
+				clrsetbits_le32(&publ->pgcr, 0xF << 18,
+					sdram_params->ch[channel].rank << 18);
+				need_trainig = 1;
+			}
+			reg = readl(&publ->datx8[2].dxgsr[0]);
+			//printf("ch %d dx2gsr0 %x\n", channel, reg);
+			if (reg & (1 << 4)) {
+				sdram_params->ch[channel].bw = 1;
+				set_bandwidth_ratio(chan, channel,
+				    sdram_params->ch[channel].bw, dram->grf);
+				need_trainig = 1;
+			}
+		}
+
+		if(need_trainig && (-1 == data_training(chan, channel, sdram_params))) {
 			if (sdram_params->base.dramtype == LPDDR3) {
 				ddr_phy_ctl_reset(dram->cru, channel, 1);
 				udelay(10);
 				ddr_phy_ctl_reset(dram->cru, channel, 0);
 				udelay(10);
 			}
-			debug("failed!");
+			printf("failed!");
 			return -EIO;
 		}
-
 		if (sdram_params->base.dramtype == LPDDR3) {
 			u32 i;
 			writel(0, &pctl->mrrcfg0);
 			for (i = 0; i < 17; i++)
 				send_command_op(pctl, 1, MRR_CMD, i, 0);
 		}
+		writel(15, &chan->msch->ddrconf);
+		//printf("ddrconfig %x\n", readl(&chan->msch->ddrconf));
 		move_to_access_state(chan);
+
+		sdram_params->ch[channel].bk = 3;
+		sdram_params->ch[channel].row_3_4 = 0;
+		sdram_params->ch[channel].dbw = sdram_params->ch[channel].bw;
+#define TEST_PATTEN	0x5aa5f00f
+		/* Detect col */
+		for (col = 11; col >= 9; col --) {
+			writel(0, CONFIG_SYS_SDRAM_BASE);
+			addr = CONFIG_SYS_SDRAM_BASE + (1 << (col + sdram_params->ch[channel].bw - 1));
+			writel(TEST_PATTEN, addr);
+			dsb();
+			//printf("addr %x %x, addr 0 %x\n", addr, readl(addr), readl(CONFIG_SYS_SDRAM_BASE));
+			if ((readl(addr) == TEST_PATTEN) && (readl(CONFIG_SYS_SDRAM_BASE) == 0))
+				break;
+		}
+		if (col == 8)
+			printf("Col detect error\n");
+		else
+			sdram_params->ch[channel].col = col;
+
+		//printf("Col %d\n", col);
+		move_to_config_state(publ, pctl);
+		writel(4, &chan->msch->ddrconf);
+		move_to_access_state(chan);
+		/* Detect row*/
+		for (row = 16; row >= 12; row --) {
+			writel(0, CONFIG_SYS_SDRAM_BASE);
+			addr = CONFIG_SYS_SDRAM_BASE + (1 << (row + 15 - 1));
+			//printf("Row detect addr %x\n", addr);
+			writel(TEST_PATTEN, addr);
+			dsb();
+			//printf("addr %x %x, addr 0 %x\n", addr, readl(addr), readl(CONFIG_SYS_SDRAM_BASE));
+			if ((readl(addr) == TEST_PATTEN) && (readl(CONFIG_SYS_SDRAM_BASE) == 0))
+				break;
+		}
+		if (row == 11)
+			printf("Row detect error\n");
+		else {
+			sdram_params->ch[channel].cs0_row = row;
+			sdram_params->ch[channel].cs1_row = row;
+		}
+
+		//printf("chn %d col %d, row %d \n", channel, col, row);
+		writel(0x1234, CONFIG_SYS_SDRAM_BASE);
+		for (row = 16; row > 0; row--)
+			writel(row, (CONFIG_SYS_SDRAM_BASE + (1 << (row + 15 - 1))));
+		for (row = 16; row > 0; row--){
+			//printf("row %d %x\n",row, readl(CONFIG_SYS_SDRAM_BASE + (1 << (row + 15 - 1))));
+		}
+		move_to_config_state(publ, pctl);
+		writel(15, &chan->msch->ddrconf);
+		move_to_access_state(chan);
+		for (row = 16; row > 0; row--){
+			//printf("row %d %x\n",row, readl(CONFIG_SYS_SDRAM_BASE + (1 << (row + 16 - 1))));
+		}
 	}
+	/* Find int NIU DDR configuration */
+	int i, tmp, size;
+	col -= (sdram_params->ch[0].bw == 2) ? 0 : 1;
+	tmp = ((sdram_params->ch[0].cs0_row - 12) << 4) | (col - 9);
+	size = sizeof(ddrconf_table)/sizeof(ddrconf_table[0]);
+	for (i = 0; i < size; i++)
+		if(tmp == ddrconf_table[i])
+			break;
+	if (i >= size)
+		printf("niu config not found\n");
+	else
+		sdram_params->base.ddrconfig = i;
+	//printf("config %d\n", i);
+/*
+	printf("channel 0, row %d, col %d, rank %d, bw %d\n",
+			sdram_params->ch[0].cs0_row,
+			sdram_params->ch[0].col,
+			sdram_params->ch[0].rank,
+			sdram_params->ch[0].bw);
+*/
+	/* Find stride */
+	long cap = sdram_params->num_channels * (1u << \
+			(sdram_params->ch[0].cs0_row + \
+			 sdram_params->ch[0].col + \
+			 (sdram_params->ch[0].rank - 1) + \
+			 sdram_params->ch[0].bw + \
+			 3 - 20));
+	printf("cap %d\n", cap);
+	switch (cap) {
+		case 512:
+			stride = 0;
+			break;
+		case 1024:
+			stride = 5;
+			break;
+		case 2048:
+			stride = 9;
+			break;
+		case 4096:
+			stride = 0xd;
+			break;
+		default:
+			stride = -1;
+			printf("could not find correct stride, cap error!\n");
+			break;
+	}
+	sdram_params->base.stride = stride;
+/*
+	printf("rank %d, col %d, bk %d, bw %d, dbw %d, row_3_4 %d, cs0_row %d, cs1_row %d, stride %d, ddrconfig %d\n",
+			sdram_params->ch[0].rank,
+			sdram_params->ch[0].col,
+			sdram_params->ch[0].bk,
+			sdram_params->ch[0].bw,
+			sdram_params->ch[0].dbw,
+			sdram_params->ch[0].row_3_4,
+			sdram_params->ch[0].cs0_row,
+			sdram_params->ch[0].cs1_row,
+			stride,
+			sdram_params->base.ddrconfig);
+*/
+
 	dram_all_config(dram, sdram_params);
-	debug("%s done\n", __func__);
 
 	return 0;
 }
@@ -752,7 +924,10 @@ size_t sdram_size_mb(struct rk3288_pmu *pmu)
 		if (row_3_4)
 			chipsize_mb = chipsize_mb * 3 / 4;
 		size_mb += chipsize_mb;
+		printf("chipsize_mb=%d\n", chipsize_mb);
 	}
+
+	printf("size_mb = %d\n", size_mb);
 
 	/*
 	* we use the 0x00000000~0xfdffffff space since 0xff000000~0xffffffff
@@ -815,42 +990,57 @@ static int rk3288_dmc_ofdata_to_platdata(struct udevice *dev)
 	struct rk3288_sdram_params *params = dev_get_platdata(dev);
 	const void *blob = gd->fdt_blob;
 	int node = dev->of_offset;
-	int i, ret;
+	int ret;
+	int i;
 
-	params->num_channels = fdtdec_get_int(blob, node,
-					      "rockchip,num-channels", 1);
-	for (i = 0; i < params->num_channels; i++) {
-		ret = fdtdec_get_byte_array(blob, node,
-					    "rockchip,sdram-channel",
-					    (u8 *)&params->ch[i],
-					    sizeof(params->ch[i]));
-		if (ret) {
-			debug("%s: Cannot read rockchip,sdram-channel\n",
-			      __func__);
-			return -EINVAL;
-		}
-	}
+	params->num_channels = 2;
 	ret = fdtdec_get_int_array(blob, node, "rockchip,pctl-timing",
 				   (u32 *)&params->pctl_timing,
 				   sizeof(params->pctl_timing) / sizeof(u32));
 	if (ret) {
-		debug("%s: Cannot read rockchip,pctl-timing\n", __func__);
+		printf("%s: Cannot read rockchip,pctl-timing\n", __func__);
 		return -EINVAL;
 	}
 	ret = fdtdec_get_int_array(blob, node, "rockchip,phy-timing",
 				   (u32 *)&params->phy_timing,
 				   sizeof(params->phy_timing) / sizeof(u32));
 	if (ret) {
-		debug("%s: Cannot read rockchip,phy-timing\n", __func__);
+		printf("%s: Cannot read rockchip,phy-timing\n", __func__);
 		return -EINVAL;
 	}
 	ret = fdtdec_get_int_array(blob, node, "rockchip,sdram-params",
 				   (u32 *)&params->base,
 				   sizeof(params->base) / sizeof(u32));
 	if (ret) {
-		debug("%s: Cannot read rockchip,sdram-params\n", __func__);
+		printf("%s: Cannot read rockchip,sdram-params\n", __func__);
 		return -EINVAL;
 	}
+
+       params->num_channels = fdtdec_get_int(blob, node,
+                                             "rockchip,num-channels", 1);
+       for (i = 0; i < params->num_channels; i++) {
+               ret = fdtdec_get_byte_array(blob, node,
+                                           "rockchip,sdram-channel",
+                                           (u8 *)&params->ch[i],
+                                           sizeof(params->ch[i]));
+               if (ret) {
+                       debug("%s: Cannot read rockchip,sdram-channel\n",
+                             __func__);
+                       return -EINVAL;
+               }
+       }
+/*
+	printf("rank %d, col %d, bk %d, bw %d, dbw %d, row_3_4 %d, cs0_row %d, cs1_row %d\n",
+			params->ch[0].rank,
+			params->ch[0].col,
+			params->ch[0].bk,
+			params->ch[0].bw,
+			params->ch[0].dbw,
+			params->ch[0].row_3_4,
+			params->ch[0].cs0_row,
+			params->ch[0].cs1_row);
+*/
+
 #ifdef CONFIG_ROCKCHIP_FAST_SPL
 	struct dram_info *priv = dev_get_priv(dev);
 
@@ -872,10 +1062,6 @@ static int conv_of_platdata(struct udevice *dev)
 	struct dtd_rockchip_rk3288_dmc *of_plat = &plat->of_plat;
 	int i, ret;
 
-	for (i = 0; i < 2; i++) {
-		memcpy(&plat->ch[i], of_plat->rockchip_sdram_channel,
-		       sizeof(plat->ch[i]));
-	}
 	memcpy(&plat->pctl_timing, of_plat->rockchip_pctl_timing,
 	       sizeof(plat->pctl_timing));
 	memcpy(&plat->phy_timing, of_plat->rockchip_phy_timing,
