@@ -809,13 +809,6 @@ static int setup_sdram(struct udevice *dev)
 	return sdram_init(priv, params);
 }
 
-static unsigned long get_ddr_id()
-{
-	unsigned long ddr_id;
-	ddr_id = readl(0xff790050);
-	ddr_id = (ddr_id & 0x6000) >> 13;
-	return ddr_id;
-}
 static int rk3288_dmc_ofdata_to_platdata(struct udevice *dev)
 {
 #if !CONFIG_IS_ENABLED(OF_PLATDATA)
@@ -823,7 +816,6 @@ static int rk3288_dmc_ofdata_to_platdata(struct udevice *dev)
 	const void *blob = gd->fdt_blob;
 	int node = dev->of_offset;
 	int i, ret;
-	unsigned long ddr_id;
 
 	params->num_channels = fdtdec_get_int(blob, node,
 					      "rockchip,num-channels", 1);
@@ -859,37 +851,6 @@ static int rk3288_dmc_ofdata_to_platdata(struct udevice *dev)
 		debug("%s: Cannot read rockchip,sdram-params\n", __func__);
 		return -EINVAL;
 	}
-
-	ddr_id = get_ddr_id();
-	printf("ddr_id = 0x%x\n", ddr_id);
-	//overwrite DRAM parameters
-	if(ddr_id == 1)
-	{
-		//2GB
-		params->phy_timing.mr[3] = 0x2;
-		for(i = 0; i < params->num_channels; i++)
-		{
-			params->ch[i].cs0_row = 0xf;
-			params->ch[i].cs1_row = 0xf;
-		}
-		params->base.ddrconfig = 14;
-		params->base.stride = 9;
-		params->base.odt = 1;
-	}
-	else if(ddr_id == 0)
-	{
-		//4GB
-		params->phy_timing.mr[3] = 0x2;
-		for(i = 0; i < params->num_channels; i++)
-		{
-			params->ch[i].rank = 0x2;
-			params->ch[i].col = 0xb;
-		}
-		params->base.ddrconfig = 14;
-		params->base.stride = 13;
-		params->base.odt = 1;
-	}
-
 #ifdef CONFIG_ROCKCHIP_FAST_SPL
 	struct dram_info *priv = dev_get_priv(dev);
 
