@@ -32,7 +32,7 @@
 #define CONFIG_SPL_SERIAL_SUPPORT
 #define CONFIG_SYS_NS16550_MEM32
 #define CONFIG_SPL_BOARD_INIT
-
+#define CONFIG_ROCKCHIP_SPL_BACK_TO_BROM
 
 #ifdef CONFIG_ROCKCHIP_SPL_BACK_TO_BROM
 /* Bootrom will load u-boot binary to 0x0 once return from SPL */
