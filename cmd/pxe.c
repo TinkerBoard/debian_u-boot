@@ -15,6 +15,7 @@
 #include <linux/list.h>
 #include <fs.h>
 #include <asm/io.h>
+#include <version.h>
 
 #include "menu.h"
 #include "cli.h"
@@ -695,6 +696,7 @@ static int label_boot(cmd_tbl_t *cmdtp, struct pxe_label *label)
 			strcpy(bootargs, label->append);
 		strcat(bootargs, ip_str);
 		strcat(bootargs, mac_str);
+		strcat(bootargs, ARG_U_BOOT_VERSION);
 
 		cli_simple_process_macros(bootargs, finalbootargs);
 		setenv("bootargs", finalbootargs);
