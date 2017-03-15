@@ -121,6 +121,11 @@ struct udevice {
 /* Returns non-zero if the device is active (probed and not removed) */
 #define device_active(dev)	((dev)->flags & DM_FLAG_ACTIVATED)
 
+static inline int dev_of_offset(const struct udevice *dev)
+{
+	return dev->of_offset;
+}
+
 /**
  * struct udevice_id - Lists the compatible strings supported by a driver
  * @compatible: Compatible string
