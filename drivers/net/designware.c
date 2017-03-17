@@ -19,6 +19,7 @@
 #include <linux/err.h>
 #include <asm/io.h>
 #include "designware.h"
+#include <i2c.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -653,13 +654,29 @@ static int designware_eth_bind(struct udevice *dev)
 	return 0;
 }
 
+int get_hwaddr_from_eeprom(unsigned char *buf)
+{
+	struct udevice *at24;
+	int ret;
+	ret = i2c_get_chip_for_busnum(2, 0x50, 1, &at24);
+	if (ret)
+		return ret;
+
+	ret = dm_i2c_read(at24, 0x00, buf, 6);
+	if (ret<0) {
+		debug("read error from device: %p\n", at24);
+		return ret;
+	}
+	return 0;
+}
+
 int designware_eth_probe(struct udevice *dev)
 {
 	struct eth_pdata *pdata = dev_get_platdata(dev);
 	struct dw_eth_dev *priv = dev_get_priv(dev);
 	u32 iobase = pdata->iobase;
 	ulong ioaddr;
-	int ret;
+	int ret, i;
 
 #ifdef CONFIG_DM_PCI
 	/*
@@ -688,6 +705,12 @@ int designware_eth_probe(struct udevice *dev)
 
 	ret = dw_phy_init(priv, dev);
 	debug("%s, ret=%d\n", __func__, ret);
+
+	/* Set MAC address from eeprom*/
+	ret = get_hwaddr_from_eeprom(pdata->enetaddr);
+	for(i=0; i<5; i++)
+		debug("%2.2x:", pdata->enetaddr[i]);
+	debug("%2.2x\n", pdata->enetaddr[i]);
 
 	return ret;
 }
