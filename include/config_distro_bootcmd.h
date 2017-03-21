@@ -296,6 +296,7 @@
 	"bootcmd_pxe=" \
 		BOOTENV_RUN_NET_USB_START \
 		BOOTENV_RUN_NET_PCI_ENUM \
+		"env set bootfile;" \
 		"dhcp; " \
 		"if pxe get; then " \
 			"pxe boot; " \
@@ -329,6 +330,7 @@
 	"boot_prefixes=/ /boot/\0" \
 	"boot_scripts=boot.scr.uimg boot.scr\0" \
 	"boot_script_dhcp=boot.scr.uimg\0" \
+	"autoload=no\0" \
 	BOOTENV_BOOT_TARGETS \
 	\
 	"boot_extlinux="                                                  \

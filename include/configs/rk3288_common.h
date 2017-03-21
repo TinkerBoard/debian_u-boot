@@ -128,6 +128,7 @@
 /* First try to boot from SD (index 0), then eMMC (index 1 */
 #define BOOT_TARGET_DEVICES(func) \
 	func(MMC, mmc, 0) \
+	func(PXE, pxe, na) \
 
 #include <config_distro_bootcmd.h>
 
