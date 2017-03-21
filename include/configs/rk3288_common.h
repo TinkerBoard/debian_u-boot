@@ -106,6 +106,13 @@
 #define CONFIG_G_DNL_VENDOR_NUM		0x2207
 #define CONFIG_G_DNL_PRODUCT_NUM	0x320a
 
+/* usb host support */
+#ifdef CONFIG_CMD_USB
+#define CONFIG_USB_DWC2
+#define CONFIG_USB_HOST_ETHER
+#define CONFIG_USB_ETHER_SMSC95XX
+#define CONFIG_USB_ETHER_ASIX
+#endif
 /* Enable gpt partition table */
 #define CONFIG_CMD_GPT
 
@@ -142,5 +149,7 @@
 	ROCKCHIP_DEVICE_SETTINGS \
 	BOOTENV
 #endif
+
+#define CONFIG_PREBOOT
 
 #endif
