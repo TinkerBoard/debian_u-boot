@@ -136,6 +136,7 @@
 #define BOOT_TARGET_DEVICES(func) \
 	func(MMC, mmc, 0) \
 	func(PXE, pxe, na) \
+	func(USB, usb, 0) \
 
 #include <config_distro_bootcmd.h>
 
