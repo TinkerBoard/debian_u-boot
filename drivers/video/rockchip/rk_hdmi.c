@@ -67,7 +67,7 @@ static const struct tmds_n_cts n_cts_table[] = {
 };
 
 struct hdmi_mpll_config {
-	u64 mpixelclock;
+	u32 mpixelclock;
 	/* Mode of Operation and PLL Dividers Control Register */
 	u32 cpce;
 	/* PLL Gmp Control Register */
@@ -77,7 +77,7 @@ struct hdmi_mpll_config {
 };
 
 struct hdmi_phy_config {
-	u64 mpixelclock;
+	u32 mpixelclock;
 	u32 sym_ctr;    /* clock symbol and transmitter control */
 	u32 term;       /* transmission termination value */
 	u32 vlev_ctr;   /* voltage level control */
@@ -85,13 +85,13 @@ struct hdmi_phy_config {
 
 static const struct hdmi_phy_config rockchip_phy_config[] = {
 	{
-		.mpixelclock = 74250,
+		.mpixelclock = 74250000,
 		.sym_ctr = 0x8009, .term = 0x0004, .vlev_ctr = 0x0272,
 	}, {
-		.mpixelclock = 148500,
+		.mpixelclock = 148500000,
 		.sym_ctr = 0x802b, .term = 0x0004, .vlev_ctr = 0x028d,
 	}, {
-		.mpixelclock = 297000,
+		.mpixelclock = 297000000,
 		.sym_ctr = 0x8039, .term = 0x0005, .vlev_ctr = 0x028d,
 	}, {
 		.mpixelclock = ~0ul,
@@ -101,22 +101,22 @@ static const struct hdmi_phy_config rockchip_phy_config[] = {
 
 static const struct hdmi_mpll_config rockchip_mpll_cfg[] = {
 	{
-		.mpixelclock = 40000,
+		.mpixelclock = 40000000,
 		.cpce = 0x00b3, .gmp = 0x0000, .curr = 0x0018,
 	}, {
-		.mpixelclock = 65000,
+		.mpixelclock = 65000000,
 		.cpce = 0x0072, .gmp = 0x0001, .curr = 0x0028,
 	}, {
-		.mpixelclock = 66000,
+		.mpixelclock = 66000000,
 		.cpce = 0x013e, .gmp = 0x0003, .curr = 0x0038,
 	}, {
-		.mpixelclock = 83500,
+		.mpixelclock = 83500000,
 		.cpce = 0x0072, .gmp = 0x0001, .curr = 0x0028,
 	}, {
-		.mpixelclock = 146250,
+		.mpixelclock = 146250000,
 		.cpce = 0x0051, .gmp = 0x0002, .curr = 0x0038,
 	}, {
-		.mpixelclock = 148500,
+		.mpixelclock = 148500000,
 		.cpce = 0x0051, .gmp = 0x0003, .curr = 0x0000,
 	}, {
 		.mpixelclock = ~0ul,
@@ -406,10 +406,9 @@ static int hdmi_phy_configure(struct rk3288_hdmi *regs, u32 mpixelclock)
 	for (i = 0; rockchip_mpll_cfg[i].mpixelclock != (~0ul); i++)
 		if (mpixelclock <= rockchip_mpll_cfg[i].mpixelclock)
 			break;
-
 	hdmi_phy_i2c_write(regs, rockchip_mpll_cfg[i].cpce, PHY_OPMODE_PLLCFG);
 	hdmi_phy_i2c_write(regs, rockchip_mpll_cfg[i].gmp, PHY_PLLGMPCTRL);
-	hdmi_phy_i2c_write(regs, rockchip_mpll_cfg[i].curr, PHY_PLLCURRCTRL);
+	hdmi_phy_i2c_write(regs, 0x0000, PHY_PLLCURRCTRL);
 
 	hdmi_phy_i2c_write(regs, 0x0000, PHY_PLLPHBYCTRL);
 	hdmi_phy_i2c_write(regs, 0x0006, PHY_PLLCLKBISTPHASE);
@@ -417,7 +416,6 @@ static int hdmi_phy_configure(struct rk3288_hdmi *regs, u32 mpixelclock)
 	for (i = 0; rockchip_phy_config[i].mpixelclock != (~0ul); i++)
 		if (mpixelclock <= rockchip_phy_config[i].mpixelclock)
 			break;
-
 	/*
 	 * resistance term 133ohm cfg
 	 * preemp cgf 0.00
@@ -666,7 +664,7 @@ static int hdmi_wait_for_hpd(struct rk3288_hdmi *regs)
 		if (hdmi_get_plug_in_status(regs))
 			return 0;
 		udelay(100);
-	} while (get_timer(start) < 300);
+	} while (get_timer(start) < 5000);
 
 	return -1;
 }
@@ -703,15 +701,15 @@ static int hdmi_read_edid(struct rk3288_hdmi *regs, int block, u8 *buff)
 	u32 n, j, val;
 
 	/* set ddc i2c clk which devided from ddc_clk to 100khz */
-	writel(0x7a, &regs->i2cm_ss_scl_hcnt_0_addr);
-	writel(0x8d, &regs->i2cm_ss_scl_lcnt_0_addr);
+	//writel(0x7a, &regs->i2cm_ss_scl_hcnt_0_addr);
+	//writel(0x8d, &regs->i2cm_ss_scl_lcnt_0_addr);
 
 	/*
 	 * TODO(sjg@chromium.org): The above values don't work - these ones
 	 * work better, but generate lots of errors in the data.
 	 */
-	writel(0x0d, &regs->i2cm_ss_scl_hcnt_0_addr);
-	writel(0x0d, &regs->i2cm_ss_scl_lcnt_0_addr);
+	//writel(0x0d, &regs->i2cm_ss_scl_hcnt_0_addr);
+	//writel(0x0d, &regs->i2cm_ss_scl_lcnt_0_addr);
 	clrsetbits_le32(&regs->i2cm_div, HDMI_I2CM_DIV_FAST_STD_MODE,
 			HDMI_I2CM_DIV_STD_MODE);
 
