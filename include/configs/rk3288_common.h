@@ -122,6 +122,7 @@
 	"scriptaddr=0x00000000\0" \
 	"pxefile_addr_r=0x00100000\0" \
 	"hw_conf_addr_r=0x00700000\0" \
+	"fdt_overlay_addr_r=0x01e00000\0" \
 	"fdt_addr_r=0x01f00000\0" \
 	"kernel_addr_r=0x02000000\0" \
 	"ramdisk_addr_r=0x04000000\0"

@@ -381,6 +381,7 @@ void do_fixup_by_compat_u32(void *fdt, const char *compat,
 	do_fixup_by_compat(fdt, compat, prop, &tmp, 4, create);
 }
 
+#ifdef CONFIG_ARCH_FIXUP_FDT_MEMORY
 /*
  * fdt_pack_reg - pack address and size array into the "reg"-suitable stream
  */
@@ -459,6 +460,7 @@ int fdt_fixup_memory_banks(void *blob, u64 start[], u64 size[], int banks)
 	}
 	return 0;
 }
+#endif
 
 int fdt_fixup_memory(void *blob, u64 start, u64 size)
 {
@@ -471,7 +473,7 @@ void fdt_fixup_ethernet(void *fdt)
 	char *tmp, *end;
 	char mac[16];
 	const char *path;
-	unsigned char mac_addr[6];
+	unsigned char mac_addr[ARP_HLEN];
 	int offset;
 
 	if (fdt_path_offset(fdt, "/aliases") < 0)
@@ -480,7 +482,6 @@ void fdt_fixup_ethernet(void *fdt)
 	/* Cycle through all aliases */
 	for (prop = 0; ; prop++) {
 		const char *name;
-		int len = strlen("ethernet");
 
 		/* FDT might have been edited, recompute the offset */
 		offset = fdt_first_property_offset(fdt,
@@ -493,8 +494,13 @@ void fdt_fixup_ethernet(void *fdt)
 			break;
 
 		path = fdt_getprop_by_offset(fdt, offset, &name, NULL);
-		if (!strncmp(name, "ethernet", len)) {
-			i = trailing_strtol(name);
+		if (!strncmp(name, "ethernet", 8)) {
+			/* Treat plain "ethernet" same as "ethernet0". */
+			if (!strcmp(name, "ethernet"))
+				i = 0;
+			else
+				i = trailing_strtol(name);
+
 			if (i != -1) {
 				if (i == 0)
 					strcpy(mac, "ethaddr");
@@ -523,7 +529,7 @@ void fdt_fixup_ethernet(void *fdt)
 }
 
 /* Resize the fdt to its actual size + a bit of padding */
-int fdt_shrink_to_minimum(void *blob)
+int fdt_shrink_to_minimum(void *blob, uint extrasize)
 {
 	int i;
 	uint64_t addr, size;
@@ -551,6 +557,7 @@ int fdt_shrink_to_minimum(void *blob)
 	actualsize = fdt_off_dt_strings(blob) +
 		fdt_size_dt_strings(blob) + 5 * sizeof(struct fdt_reserve_entry);
 
+	actualsize += extrasize;
 	/* Make it so the fdt ends on a page boundary */
 	actualsize = ALIGN(actualsize + ((uintptr_t)blob & 0xfff), 0x1000);
 	actualsize = actualsize - ((uintptr_t)blob & 0xfff);
@@ -900,13 +907,8 @@ void fdt_fixup_mtdparts(void *blob, void *node_info, int node_info_size)
 {
 	struct node_info *ni = node_info;
 	struct mtd_device *dev;
-	char *parts;
 	int i, idx;
 	int noff;
-
-	parts = getenv("mtdparts");
-	if (!parts)
-		return;
 
 	if (mtdparts_init() != 0)
 		return;
@@ -997,8 +999,8 @@ static void of_dump_addr(const char *s, const fdt32_t *addr, int na) { }
 struct of_bus {
 	const char	*name;
 	const char	*addresses;
-	int		(*match)(void *blob, int parentoffset);
-	void		(*count_cells)(void *blob, int parentoffset,
+	int		(*match)(const void *blob, int parentoffset);
+	void		(*count_cells)(const void *blob, int parentoffset,
 				int *addrc, int *sizec);
 	u64		(*map)(fdt32_t *addr, const fdt32_t *range,
 				int na, int ns, int pna);
@@ -1006,7 +1008,7 @@ struct of_bus {
 };
 
 /* Default translator (generic bus) */
-void of_bus_default_count_cells(void *blob, int parentoffset,
+void of_bus_default_count_cells(const void *blob, int parentoffset,
 					int *addrc, int *sizec)
 {
 	const fdt32_t *prop;
@@ -1055,7 +1057,7 @@ static int of_bus_default_translate(fdt32_t *addr, u64 offset, int na)
 #ifdef CONFIG_OF_ISA_BUS
 
 /* ISA bus translator */
-static int of_bus_isa_match(void *blob, int parentoffset)
+static int of_bus_isa_match(const void *blob, int parentoffset)
 {
 	const char *name;
 
@@ -1066,7 +1068,7 @@ static int of_bus_isa_match(void *blob, int parentoffset)
 	return !strcmp(name, "isa");
 }
 
-static void of_bus_isa_count_cells(void *blob, int parentoffset,
+static void of_bus_isa_count_cells(const void *blob, int parentoffset,
 				   int *addrc, int *sizec)
 {
 	if (addrc)
@@ -1126,7 +1128,7 @@ static struct of_bus of_busses[] = {
 	},
 };
 
-static struct of_bus *of_match_bus(void *blob, int parentoffset)
+static struct of_bus *of_match_bus(const void *blob, int parentoffset)
 {
 	struct of_bus *bus;
 
@@ -1148,7 +1150,7 @@ static struct of_bus *of_match_bus(void *blob, int parentoffset)
 	return NULL;
 }
 
-static int of_translate_one(void * blob, int parent, struct of_bus *bus,
+static int of_translate_one(const void *blob, int parent, struct of_bus *bus,
 			    struct of_bus *pbus, fdt32_t *addr,
 			    int na, int ns, int pna, const char *rprop)
 {
@@ -1211,8 +1213,8 @@ static int of_translate_one(void * blob, int parent, struct of_bus *bus,
  * that can be mapped to a cpu physical address). This is not really specified
  * that way, but this is traditionally the way IBM at least do things
  */
-static u64 __of_translate_address(void *blob, int node_offset, const fdt32_t *in_addr,
-				  const char *rprop)
+static u64 __of_translate_address(const void *blob, int node_offset,
+				  const fdt32_t *in_addr, const char *rprop)
 {
 	int parent;
 	struct of_bus *bus, *pbus;
@@ -1284,7 +1286,8 @@ static u64 __of_translate_address(void *blob, int node_offset, const fdt32_t *in
 	return result;
 }
 
-u64 fdt_translate_address(void *blob, int node_offset, const fdt32_t *in_addr)
+u64 fdt_translate_address(const void *blob, int node_offset,
+			  const fdt32_t *in_addr)
 {
 	return __of_translate_address(blob, node_offset, in_addr, "ranges");
 }

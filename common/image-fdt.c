@@ -285,7 +285,7 @@ int boot_get_fdt(int flag, int argc, char * const argv[], uint8_t arch,
 			fdt_noffset = fit_get_node_from_config(images,
 							       FIT_FDT_PROP,
 							       fdt_addr);
-			if (fdt_noffset == -ENOLINK)
+			if (fdt_noffset == -ENOENT)
 				return 0;
 			else if (fdt_noffset < 0)
 				return 1;
@@ -474,12 +474,12 @@ int image_setup_libfdt(bootm_headers_t *images, void *blob,
 		printf("ERROR: /chosen node create failed\n");
 		goto err;
 	}
-#ifdef CONFIG_ARCH_FIXUP_FDT
 	if (arch_fixup_fdt(blob) < 0) {
 		printf("ERROR: arch-specific fdt fixup failed\n");
 		goto err;
 	}
-#endif
+	/* Update ethernet nodes */
+	fdt_fixup_ethernet(blob);
 	if (IMAGE_OF_BOARD_SETUP) {
 		fdt_ret = ft_board_setup(blob, gd->bd);
 		if (fdt_ret) {
@@ -496,14 +496,13 @@ int image_setup_libfdt(bootm_headers_t *images, void *blob,
 			goto err;
 		}
 	}
-	fdt_fixup_ethernet(blob);
 
 	/* Delete the old LMB reservation */
 	if (lmb)
 		lmb_free(lmb, (phys_addr_t)(u32)(uintptr_t)blob,
 			 (phys_size_t)fdt_totalsize(blob));
 
-	ret = fdt_shrink_to_minimum(blob);
+	ret = fdt_shrink_to_minimum(blob, 0);
 	if (ret < 0)
 		goto err;
 	of_size = ret;

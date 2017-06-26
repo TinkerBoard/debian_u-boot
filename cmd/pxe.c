@@ -598,6 +598,7 @@ static int label_localboot(struct pxe_label *label)
 
 	return run_command_list(localcmd, strlen(localcmd), 0);
 }
+#define MAX_OVERLAY_NAME_LENGTH 128
 struct hw_config
 {
 	int valid;
@@ -608,6 +609,8 @@ struct hw_config
 	int pwm3;
 	int pcm;
 	int uart1;
+	int dts_overlay;
+	char dts_overlay_name[MAX_OVERLAY_NAME_LENGTH];
 };
 
 static unsigned long hw_skip_comment(char *text)
@@ -753,6 +756,36 @@ static unsigned long get_value(char *text, struct hw_config *hw_conf)
 		else
 			goto invalid_line;
 	}
+	else if(memcmp(text, "dts_overlay=",  12) == 0)
+	{
+		int name_length;
+#define DTS_OVERLAY_PROPERTY_LENGTH 12
+		int j = DTS_OVERLAY_PROPERTY_LENGTH; //dts_overlay file offset
+		i = j;
+
+		while(*(text + j) != 0x00)
+		{
+			if(*(text + j) == 0x0a)
+				break;
+			j++;
+		}
+
+		name_length = j - i;
+		i = j;
+
+		//printf("dts_overlay name length = %d\n", name_length);
+		if(name_length && name_length < MAX_OVERLAY_NAME_LENGTH)
+		{
+			memcpy(hw_conf->dts_overlay_name, text + DTS_OVERLAY_PROPERTY_LENGTH, name_length);
+			hw_conf->dts_overlay_name[name_length] = 0x00;
+			//printf("dts_overlay name = %s\n", hw_conf->dts_overlay_name);
+			hw_conf->dts_overlay = 1;
+		}
+		else
+		{
+				printf("Invalid dts overlay file name\n");
+		}
+	}
 	else
 		goto invalid_line;
 
@@ -872,15 +905,11 @@ static int set_hw_property(struct fdt_header *working_fdt, char *path, char *pro
 	return 0;
 }
 
-static void handle_hw_conf(struct hw_config *hw_conf)
+static struct fdt_header *resize_working_fdt()
 {
 	struct fdt_header *working_fdt;
 	unsigned long file_addr;
 	char *envaddr;
-	char *path;
-	char *property;
-	char *value;
-	int length;
 	int err;
 
 	envaddr = from_env("fdt_addr_r");
@@ -888,23 +917,126 @@ static void handle_hw_conf(struct hw_config *hw_conf)
 	if (!envaddr)
 	{
 		printf("Can't get fdt address\n");
-		return;
+		return NULL;
 	}
 
 	if (strict_strtoul(envaddr, 16, &file_addr) < 0)
-		return;
+		return NULL;
 
 	working_fdt = map_sysmem(file_addr, 0);
-	err = fdt_open_into(working_fdt, working_fdt, fdt_totalsize(working_fdt) + 1024);
+	err = fdt_open_into(working_fdt, working_fdt, (1024 * 1024));
 	if (err != 0)
 	{
 		printf("libfdt fdt_open_into(): %s\n", fdt_strerror(err));
-		return;
+		return NULL;
 	}
 
 	//printf("fdt addr %x\n", working_fdt);
 	//printf("fdt magic number %x\n", working_fdt->magic);
 	//printf("fdt size %u\n", fdt_totalsize(working_fdt));
+
+	return working_fdt;
+}
+
+#ifdef CONFIG_OF_LIBFDT_OVERLAY
+static int fdt_valid(struct fdt_header **blobp)
+{
+	const void *blob = *blobp;
+	int err;
+
+	if (blob == NULL) {
+		printf ("The address of the fdt is invalid (NULL).\n");
+		return 0;
+	}
+
+	err = fdt_check_header(blob);
+	if (err == 0)
+		return 1;	/* valid */
+
+	if (err < 0) {
+		printf("libfdt fdt_check_header(): %s", fdt_strerror(err));
+		/*
+		 * Be more informative on bad version.
+		 */
+		if (err == -FDT_ERR_BADVERSION) {
+			if (fdt_version(blob) <
+			    FDT_FIRST_SUPPORTED_VERSION) {
+				printf (" - too old, fdt %d < %d",
+					fdt_version(blob),
+					FDT_FIRST_SUPPORTED_VERSION);
+			}
+			if (fdt_last_comp_version(blob) >
+			    FDT_LAST_SUPPORTED_VERSION) {
+				printf (" - too new, fdt %d > %d",
+					fdt_version(blob),
+					FDT_LAST_SUPPORTED_VERSION);
+			}
+		}
+		printf("\n");
+		*blobp = NULL;
+		return 0;
+	}
+	return 1;
+}
+static int merge_dts_overlay(cmd_tbl_t *cmdtp, struct fdt_header *working_fdt, char *overlay_name)
+{
+	unsigned long file_addr;
+	char *envaddr;
+	struct fdt_header *blob;
+	int ret;
+
+	//printf("merge_dts_overlay\n");
+	envaddr = from_env("fdt_overlay_addr_r");
+	if (!envaddr)
+		goto fail;
+
+	if (strict_strtoul(envaddr, 16, &file_addr) < 0)
+		goto fail;
+
+	if(get_relfile(cmdtp, overlay_name, file_addr) < 0)
+		goto fail;
+
+	blob = map_sysmem(file_addr, 0);
+	if (!fdt_valid(&blob))
+	{
+		printf("overlay dtb(0x%x) is invalid\n", (void *)blob);
+		goto fail;
+	}
+	else
+	{
+		printf("overlay dtb(0x%x) is valid\n", (void *)blob);
+	}
+
+	//printf("fdt_overlay_apply %x %x\n", (void *)working_fdt, (void *)blob);
+	ret = fdt_overlay_apply(working_fdt, blob);
+	if (ret) {
+		printf("fdt_overlay_apply(): %s\n", fdt_strerror(ret));
+		goto fail;
+	}
+
+	return 0;
+
+fail:
+	printf("Can't load dts overlay\n");
+	return -1;
+}
+#endif
+
+static void handle_hw_conf(cmd_tbl_t *cmdtp, struct fdt_header *working_fdt, struct hw_config *hw_conf)
+{
+
+	if(working_fdt == NULL)
+		return;
+#ifdef CONFIG_OF_LIBFDT_OVERLAY
+	if(hw_conf->dts_overlay)
+	{
+		if(merge_dts_overlay(cmdtp, working_fdt, hw_conf->dts_overlay_name) < 0)
+		{
+			printf("Can not merge dts overlay\n");
+			return;
+		}
+	}
+#endif
 
 	if(hw_conf->i2c1)
 	{
@@ -1000,6 +1132,11 @@ static int label_boot(cmd_tbl_t *cmdtp, struct pxe_label *label)
 		printf("hw_conf.pwm3 = %d\n", hw_conf.pwm3);
 		//printf("hw_conf.pcm = %d\n", hw_conf.pcm);
 		printf("hw_conf.uart1 = %d\n", hw_conf.uart1);
+		printf("hw_conf.dts_overlay = %d\n", hw_conf.dts_overlay);
+		if(hw_conf.dts_overlay)
+		{
+			printf("hw_conf.dts_overlay_name = %s\n", hw_conf.dts_overlay_name);
+		}
 	}
 
 	label_print(label);
@@ -1148,6 +1285,7 @@ static int label_boot(cmd_tbl_t *cmdtp, struct pxe_label *label)
 		}
 
 		if (fdtfile) {
+			struct fdt_header *working_fdt;
 			int err = get_relfile_envaddr(cmdtp, fdtfile, "fdt_addr_r");
 			free(fdtfilefree);
 			if (err < 0) {
@@ -1155,9 +1293,13 @@ static int label_boot(cmd_tbl_t *cmdtp, struct pxe_label *label)
 						label->name);
 				return 1;
 			}
-			if(hw_conf.valid)
+			working_fdt = resize_working_fdt();
+			if(working_fdt != NULL)
 			{
-				handle_hw_conf(&hw_conf);
+				if(hw_conf.valid)
+				{
+					handle_hw_conf(cmdtp, working_fdt, &hw_conf);
+				}
 			}
 		} else {
 			bootm_argv[3] = NULL;

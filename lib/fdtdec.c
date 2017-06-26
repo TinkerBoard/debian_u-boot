@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <serial.h>
 #include <libfdt.h>
+#include <fdt_support.h>
 #include <fdtdec.h>
 #include <asm/sections.h>
 #include <linux/ctype.h>
@@ -58,7 +59,6 @@ static const char * const compat_names[COMPAT_COUNT] = {
 	COMPAT(INTEL_MICROCODE, "intel,microcode"),
 	COMPAT(AMS_AS3722, "ams,as3722"),
 	COMPAT(INTEL_QRK_MRC, "intel,quark-mrc"),
-	COMPAT(SOCIONEXT_XHCI, "socionext,uniphier-xhci"),
 	COMPAT(ALTERA_SOCFPGA_DWMAC, "altr,socfpga-stmmac"),
 	COMPAT(ALTERA_SOCFPGA_DWMMC, "altr,socfpga-dw-mshc"),
 	COMPAT(ALTERA_SOCFPGA_DWC2USB, "snps,dwc2"),
@@ -66,6 +66,14 @@ static const char * const compat_names[COMPAT_COUNT] = {
 	COMPAT(INTEL_BAYTRAIL_FSP_MDP, "intel,baytrail-fsp-mdp"),
 	COMPAT(INTEL_IVYBRIDGE_FSP, "intel,ivybridge-fsp"),
 	COMPAT(COMPAT_SUNXI_NAND, "allwinner,sun4i-a10-nand"),
+	COMPAT(ALTERA_SOCFPGA_CLK, "altr,clk-mgr"),
+	COMPAT(ALTERA_SOCFPGA_PINCTRL_SINGLE, "pinctrl-single"),
+	COMPAT(ALTERA_SOCFPGA_H2F_BRG, "altr,socfpga-hps2fpga-bridge"),
+	COMPAT(ALTERA_SOCFPGA_LWH2F_BRG, "altr,socfpga-lwhps2fpga-bridge"),
+	COMPAT(ALTERA_SOCFPGA_F2H_BRG, "altr,socfpga-fpga2hps-bridge"),
+	COMPAT(ALTERA_SOCFPGA_F2SDR0, "altr,socfpga-fpga2sdram0-bridge"),
+	COMPAT(ALTERA_SOCFPGA_F2SDR1, "altr,socfpga-fpga2sdram1-bridge"),
+	COMPAT(ALTERA_SOCFPGA_F2SDR2, "altr,socfpga-fpga2sdram2-bridge"),
 };
 
 const char *fdtdec_get_compatible(enum fdt_compat_id id)
@@ -77,7 +85,7 @@ const char *fdtdec_get_compatible(enum fdt_compat_id id)
 
 fdt_addr_t fdtdec_get_addr_size_fixed(const void *blob, int node,
 		const char *prop_name, int index, int na, int ns,
-		fdt_size_t *sizep)
+		fdt_size_t *sizep, bool translate)
 {
 	const fdt32_t *prop, *prop_end;
 	const fdt32_t *prop_addr, *prop_size, *prop_after_size;
@@ -112,7 +120,12 @@ fdt_addr_t fdtdec_get_addr_size_fixed(const void *blob, int node,
 		return FDT_ADDR_T_NONE;
 	}
 
-	addr = fdtdec_get_number(prop_addr, na);
+#if CONFIG_IS_ENABLED(OF_TRANSLATE)
+	if (translate)
+		addr = fdt_translate_address(blob, node, prop_addr);
+	else
+#endif
+		addr = fdtdec_get_number(prop_addr, na);
 
 	if (sizep) {
 		*sizep = fdtdec_get_number(prop_size, ns);
@@ -126,7 +139,8 @@ fdt_addr_t fdtdec_get_addr_size_fixed(const void *blob, int node,
 }
 
 fdt_addr_t fdtdec_get_addr_size_auto_parent(const void *blob, int parent,
-		int node, const char *prop_name, int index, fdt_size_t *sizep)
+		int node, const char *prop_name, int index, fdt_size_t *sizep,
+		bool translate)
 {
 	int na, ns;
 
@@ -147,11 +161,12 @@ fdt_addr_t fdtdec_get_addr_size_auto_parent(const void *blob, int parent,
 	debug("na=%d, ns=%d, ", na, ns);
 
 	return fdtdec_get_addr_size_fixed(blob, node, prop_name, index, na,
-					  ns, sizep);
+					  ns, sizep, translate);
 }
 
 fdt_addr_t fdtdec_get_addr_size_auto_noparent(const void *blob, int node,
-		const char *prop_name, int index, fdt_size_t *sizep)
+		const char *prop_name, int index, fdt_size_t *sizep,
+		bool translate)
 {
 	int parent;
 
@@ -164,7 +179,7 @@ fdt_addr_t fdtdec_get_addr_size_auto_noparent(const void *blob, int node,
 	}
 
 	return fdtdec_get_addr_size_auto_parent(blob, parent, node, prop_name,
-						index, sizep);
+						index, sizep, translate);
 }
 
 fdt_addr_t fdtdec_get_addr_size(const void *blob, int node,
@@ -174,7 +189,7 @@ fdt_addr_t fdtdec_get_addr_size(const void *blob, int node,
 
 	return fdtdec_get_addr_size_fixed(blob, node, prop_name, 0,
 					  sizeof(fdt_addr_t) / sizeof(fdt32_t),
-					  ns, sizep);
+					  ns, sizep, false);
 }
 
 fdt_addr_t fdtdec_get_addr(const void *blob, int node,
@@ -829,7 +844,7 @@ int fdtdec_get_child_count(const void *blob, int node)
 	int subnode;
 	int num = 0;
 
-	fdt_for_each_subnode(blob, subnode, node)
+	fdt_for_each_subnode(subnode, blob, node)
 		num++;
 
 	return num;
@@ -1007,7 +1022,7 @@ int fdt_get_named_resource(const void *fdt, int node, const char *property,
 {
 	int index;
 
-	index = fdt_find_string(fdt, node, prop_names, name);
+	index = fdt_stringlist_search(fdt, node, prop_names, name);
 	if (index < 0)
 		return index;
 
@@ -1167,6 +1182,62 @@ int fdtdec_decode_display_timing(const void *blob, int parent, int index,
 	return ret;
 }
 
+int fdtdec_setup_memory_size(void)
+{
+	int ret, mem;
+	struct fdt_resource res;
+
+	mem = fdt_path_offset(gd->fdt_blob, "/memory");
+	if (mem < 0) {
+		debug("%s: Missing /memory node\n", __func__);
+		return -EINVAL;
+	}
+
+	ret = fdt_get_resource(gd->fdt_blob, mem, "reg", 0, &res);
+	if (ret != 0) {
+		debug("%s: Unable to decode first memory bank\n", __func__);
+		return -EINVAL;
+	}
+
+	gd->ram_size = (phys_size_t)(res.end - res.start + 1);
+	debug("%s: Initial DRAM size %llx\n", __func__, (u64)gd->ram_size);
+
+	return 0;
+}
+
+#if defined(CONFIG_NR_DRAM_BANKS)
+int fdtdec_setup_memory_banksize(void)
+{
+	int bank, ret, mem;
+	struct fdt_resource res;
+
+	mem = fdt_path_offset(gd->fdt_blob, "/memory");
+	if (mem < 0) {
+		debug("%s: Missing /memory node\n", __func__);
+		return -EINVAL;
+	}
+
+	for (bank = 0; bank < CONFIG_NR_DRAM_BANKS; bank++) {
+		ret = fdt_get_resource(gd->fdt_blob, mem, "reg", bank, &res);
+		if (ret == -FDT_ERR_NOTFOUND)
+			break;
+		if (ret != 0)
+			return -EINVAL;
+
+		gd->bd->bi_dram[bank].start = (phys_addr_t)res.start;
+		gd->bd->bi_dram[bank].size =
+			(phys_size_t)(res.end - res.start + 1);
+
+		debug("%s: DRAM Bank #%d: start = 0x%llx, size = 0x%llx\n",
+		      __func__, bank,
+		      (unsigned long long)gd->bd->bi_dram[bank].start,
+		      (unsigned long long)gd->bd->bi_dram[bank].size);
+	}
+
+	return 0;
+}
+#endif
+
 int fdtdec_setup(void)
 {
 #if CONFIG_IS_ENABLED(OF_CONTROL)
@@ -1184,6 +1255,9 @@ int fdtdec_setup(void)
 	/* FDT is at end of image */
 	gd->fdt_blob = (ulong *)&_end;
 #  endif
+# elif defined(CONFIG_OF_BOARD)
+	/* Allow the board to override the fdt address. */
+	gd->fdt_blob = board_fdt_blob_setup();
 # elif defined(CONFIG_OF_HOSTFILE)
 	if (sandbox_read_fdt_from_file()) {
 		puts("Failed to read control FDT\n");

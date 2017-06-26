@@ -671,7 +671,7 @@ fdt_addr_t dev_get_addr_index(struct udevice *dev, int index)
 		addr = fdtdec_get_addr_size_auto_parent(gd->fdt_blob,
 							dev->parent->of_offset,
 							dev->of_offset, "reg",
-							index, NULL);
+							index, NULL, false);
 		if (CONFIG_IS_ENABLED(SIMPLE_BUS) && addr != FDT_ADDR_T_NONE) {
 			if (device_get_uclass_id(dev->parent) ==
 			    UCLASS_SIMPLE_BUS)
@@ -698,7 +698,7 @@ fdt_addr_t dev_get_addr_name(struct udevice *dev, const char *name)
 #if CONFIG_IS_ENABLED(OF_CONTROL)
 	int index;
 
-	index = fdt_find_string(gd->fdt_blob, dev->of_offset, "reg-names",
+	index = fdt_stringlist_search(gd->fdt_blob, dev->of_offset, "reg-names",
 				name);
 	if (index < 0)
 		return index;
