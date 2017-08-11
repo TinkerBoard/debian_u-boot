@@ -277,6 +277,20 @@ static int rk_display_init(struct udevice *dev, ulong fbbase, int ep_node)
 		return ret;
 	}
 
+	/* Use 1080p display_timing when connect 4K HDMI screen */
+	if (timing.hactive.typ >= 3840) {
+		timing.pixelclock.typ	= 148500000;
+		timing.hactive.typ	= 1920;
+		timing.vactive.typ	= 1080;
+		timing.hsync_len.typ	= 44;
+		timing.hback_porch.typ	= 148;
+		timing.vsync_len.typ	= 5;
+		timing.vback_porch.typ  = 36;
+		timing.hfront_porch.typ	= 88;
+		timing.vfront_porch.typ	= 4;
+		debug("Use default 1080P settings \n");
+	}
+
 	ret = clk_get_by_index(dev, 1, &clk);
 	if (!ret)
 		ret = clk_set_rate(&clk, timing.pixelclock.typ);

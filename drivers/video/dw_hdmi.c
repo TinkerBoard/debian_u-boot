@@ -340,7 +340,7 @@ static int hdmi_phy_configure(struct dw_hdmi *hdmi, u32 mpixelclock)
 
 	hdmi_phy_i2c_write(hdmi, hdmi->mpll_cfg[i].cpce, PHY_OPMODE_PLLCFG);
 	hdmi_phy_i2c_write(hdmi, hdmi->mpll_cfg[i].gmp, PHY_PLLGMPCTRL);
-	hdmi_phy_i2c_write(hdmi, hdmi->mpll_cfg[i].curr, PHY_PLLCURRCTRL);
+	hdmi_phy_i2c_write(hdmi, 0x0000, PHY_PLLCURRCTRL);
 
 	hdmi_phy_i2c_write(hdmi, 0x0000, PHY_PLLPHBYCTRL);
 	hdmi_phy_i2c_write(hdmi, 0x0006, PHY_PLLCLKBISTPHASE);
@@ -560,8 +560,8 @@ static int hdmi_read_edid(struct dw_hdmi *hdmi, int block, u8 *buff)
 	u32 n;
 
 	/* set ddc i2c clk which devided from ddc_clk to 100khz */
-	hdmi_write(hdmi, hdmi->i2c_clk_high, HDMI_I2CM_SS_SCL_HCNT_0_ADDR);
-	hdmi_write(hdmi, hdmi->i2c_clk_low, HDMI_I2CM_SS_SCL_LCNT_0_ADDR);
+	//hdmi_write(hdmi, hdmi->i2c_clk_high, HDMI_I2CM_SS_SCL_HCNT_0_ADDR);
+	//hdmi_write(hdmi, hdmi->i2c_clk_low, HDMI_I2CM_SS_SCL_LCNT_0_ADDR);
 	hdmi_mod(hdmi, HDMI_I2CM_DIV, HDMI_I2CM_DIV_FAST_STD_MODE,
 		 HDMI_I2CM_DIV_STD_MODE);
 
@@ -663,7 +663,7 @@ int dw_hdmi_phy_wait_for_hpd(struct dw_hdmi *hdmi)
 		if (hdmi_get_plug_in_status(hdmi))
 			return 0;
 		udelay(100);
-	} while (get_timer(start) < 300);
+	} while (get_timer(start) < 5000);
 
 	return -1;
 }

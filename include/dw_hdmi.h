@@ -448,7 +448,7 @@ enum {
 };
 
 struct hdmi_mpll_config {
-	u64 mpixelclock;
+	u32 mpixelclock;
 	/* Mode of Operation and PLL Dividers Control Register */
 	u32 cpce;
 	/* PLL Gmp Control Register */
@@ -458,7 +458,7 @@ struct hdmi_mpll_config {
 };
 
 struct hdmi_phy_config {
-	u64 mpixelclock;
+	u32 mpixelclock;
 	u32 sym_ctr;    /* clock symbol and transmitter control */
 	u32 term;       /* transmission termination value */
 	u32 vlev_ctr;   /* voltage level control */
