@@ -611,6 +611,11 @@ struct hw_config
 	int uart1;
 	int dts_overlay;
 	char dts_overlay_name[MAX_OVERLAY_NAME_LENGTH];
+	int spi0;
+	int uart2;
+	int uart3;
+	int uart4;
+	int pcm_i2s;
 };
 
 static unsigned long hw_skip_comment(char *text)
@@ -786,6 +791,88 @@ static unsigned long get_value(char *text, struct hw_config *hw_conf)
 				printf("Invalid dts overlay file name\n");
 		}
 	}
+
+	else if(memcmp(text, "spi0=",  5) == 0)
+	{
+		i = 5;
+		if(memcmp(text + i, "on", 2) == 0)
+		{
+			hw_conf->spi0 = 1;
+			i = i + 2;
+		}
+		else if(memcmp(text + i, "off", 3) == 0)
+		{
+			hw_conf->spi0 = 0;
+			i = i + 3;
+		}
+		else
+			goto invalid_line;
+	}
+	else if(memcmp(text, "uart2=",  6) == 0)
+	{
+		i = 6;
+		if(memcmp(text + i, "on", 2) == 0)
+		{
+			hw_conf->uart2 = 1;
+			i = i + 2;
+		}
+		else if(memcmp(text + i, "off", 3) == 0)
+		{
+			hw_conf->uart2 = 0;
+			i = i + 3;
+		}
+		else
+			goto invalid_line;
+	}
+	else if(memcmp(text, "uart3=",  6) == 0)
+	{
+		i = 6;
+		if(memcmp(text + i, "on", 2) == 0)
+		{
+			hw_conf->uart3 = 1;
+			i = i + 2;
+		}
+		else if(memcmp(text + i, "off", 3) == 0)
+		{
+			hw_conf->uart3 = 0;
+			i = i + 3;
+		}
+		else
+			goto invalid_line;
+	}
+	else if(memcmp(text, "uart4=",  6) == 0)
+	{
+		i = 6;
+		if(memcmp(text + i, "on", 2) == 0)
+		{
+			hw_conf->uart4 = 1;
+			i = i + 2;
+		}
+		else if(memcmp(text + i, "off", 3) == 0)
+		{
+			hw_conf->uart4 = 0;
+			i = i + 3;
+		}
+		else
+			goto invalid_line;
+	}
+	else if(memcmp(text, "pcm_i2s=",  8) == 0)
+	{
+		i = 8;
+		if(memcmp(text + i, "on", 2) == 0)
+		{
+			hw_conf->pcm_i2s = 1;
+			i = i + 2;
+		}
+		else if(memcmp(text + i, "off", 3) == 0)
+		{
+			hw_conf->pcm_i2s = 0;
+			i = i + 3;
+		}
+		else
+			goto invalid_line;
+	}
+
 	else
 		goto invalid_line;
 
@@ -1022,6 +1109,37 @@ fail:
 }
 #endif
 
+
+static int is_pwm2_pwm3_enable()
+{
+	if(hw_conf->pwm2 || hw_conf->pwm3)
+	    return 1;
+	else
+	    return 0;
+}
+
+static void handle_pwm_conf()
+{
+	if(hw_conf->pwm2)
+	{
+		set_hw_property(working_fdt, "/pwm@ff680020", "status", "okay", 5);
+	}
+	else
+	{
+		set_hw_property(working_fdt, "/pwm@ff680020", "status", "disabled", 9);
+	}
+
+	if(hw_conf->pwm3)
+	{
+		set_hw_property(working_fdt, "/pwm@ff680030", "status", "okay", 5);
+	}
+	else
+	{
+		set_hw_property(working_fdt, "/pwm@ff680030", "status", "disabled", 9);
+	}
+
+}
+
 static void handle_hw_conf(cmd_tbl_t *cmdtp, struct fdt_header *working_fdt, struct hw_config *hw_conf)
 {
 
@@ -1065,22 +1183,25 @@ static void handle_hw_conf(cmd_tbl_t *cmdtp, struct fdt_header *working_fdt, str
 		set_hw_property(working_fdt, "/spi@ff130000", "status", "disabled", 9);
 	}
 
-	if(hw_conf->pwm2)
+	if(hw_conf->uart2 && is_pwm2_pwm3_enable())
 	{
-		set_hw_property(working_fdt, "/pwm@ff680020", "status", "okay", 5);
+		set_hw_property(working_fdt, "/serial@ff690000", "status", "disabled", 9);
+		handle_pwm_conf();
+	}
+	else if(hw_conf->uart2 && !is_pwm2_pwm3_enable())
+	{
+		set_hw_property(working_fdt, "/serial@ff690000", "status", "okay", 5);
+		handle_pwm_conf();
+	}
+	else if(!hw_conf->uart2 && is_pwm2_pwm3_enable())
+	{
+		set_hw_property(working_fdt, "/serial@ff690000", "status", "disabled", 9);
+		handle_pwm_conf();
 	}
 	else
 	{
-		set_hw_property(working_fdt, "/pwm@ff680020", "status", "disabled", 9);
-	}
-
-	if(hw_conf->pwm3)
-	{
-		set_hw_property(working_fdt, "/pwm@ff680030", "status", "okay", 5);
-	}
-	else
-	{
-		set_hw_property(working_fdt, "/pwm@ff680030", "status", "disabled", 9);
+		set_hw_property(working_fdt, "/serial@ff690000", "status", "disabled", 9);
+		handle_pwm_conf();
 	}
 
 	if(hw_conf->uart1)
@@ -1091,6 +1212,46 @@ static void handle_hw_conf(cmd_tbl_t *cmdtp, struct fdt_header *working_fdt, str
 	{
 		set_hw_property(working_fdt, "/serial@ff190000", "status", "disabled", 9);
 	}
+
+	if(hw_conf->spi0 && hw_conf->uart4)
+	{
+		set_hw_property(working_fdt, "/spi@ff110000", "status", "disabled", 9);
+		set_hw_property(working_fdt, "/serial@ff1c0000", "status", "okay", 5);
+	}
+	else if (hw_conf->spi0 && !hw_conf->uart4)
+	{
+		set_hw_property(working_fdt, "/spi@ff110000", "status", "okay", 5);
+		set_hw_property(working_fdt, "/serial@ff1c0000", "status", "disabled", 9);
+	}
+	else if (!hw_conf->spi0 && hw_conf->uart4)
+	{
+		set_hw_property(working_fdt, "/spi@ff110000", "status", "disabled", 9);
+		set_hw_property(working_fdt, "/serial@ff1c0000", "status", "okay", 5);
+	}
+	else
+	{
+		set_hw_property(working_fdt, "/spi@ff110000", "status", "disabled", 9);
+		set_hw_property(working_fdt, "/serial@ff1c0000", "status", "disabled", 9);
+	}
+
+	if(hw_conf->uart3)
+	{
+		set_hw_property(working_fdt, "/serial@ff1b0000", "status", "okay", 5);
+	}
+	else
+	{
+		set_hw_property(working_fdt, "/serial@ff1b0000", "status", "disabled", 9);
+	}
+
+	if(hw_conf->pcm_i2s)
+	{
+		set_hw_property(working_fdt, "/i2s@ff890000", "status", "okay", 5);
+	}
+	else
+	{
+		set_hw_property(working_fdt, "/i2s@ff890000", "status", "disabled", 9);
+	}
+
 }
 
 /*
@@ -1130,7 +1291,11 @@ static int label_boot(cmd_tbl_t *cmdtp, struct pxe_label *label)
 		printf("hw_conf.spi2 = %d\n", hw_conf.spi2);
 		printf("hw_conf.pwm2 = %d\n", hw_conf.pwm2);
 		printf("hw_conf.pwm3 = %d\n", hw_conf.pwm3);
-		//printf("hw_conf.pcm = %d\n", hw_conf.pcm);
+		printf("hw_conf.spi0 = %d\n", hw_conf.spi0);
+		printf("hw_conf.uart2 = %d\n", hw_conf.uart2);
+		printf("hw_conf.uart3 = %d\n", hw_conf.uart3);
+		printf("hw_conf.uart4 = %d\n", hw_conf.uart4);
+		printf("hw_conf.pcm = %d\n", hw_conf.pcm_i2s);
 		printf("hw_conf.uart1 = %d\n", hw_conf.uart1);
 		printf("hw_conf.dts_overlay = %d\n", hw_conf.dts_overlay);
 		if(hw_conf.dts_overlay)
