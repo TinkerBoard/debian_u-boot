@@ -1110,7 +1110,7 @@ fail:
 #endif
 
 
-static int is_pwm2_pwm3_enable()
+static int is_pwm2_pwm3_enable(struct hw_config *hw_conf)
 {
 	if(hw_conf->pwm2 || hw_conf->pwm3)
 	    return 1;
@@ -1118,7 +1118,7 @@ static int is_pwm2_pwm3_enable()
 	    return 0;
 }
 
-static void handle_pwm_conf()
+static void handle_pwm_conf(struct hw_config *hw_conf)
 {
 	if(hw_conf->pwm2)
 	{
@@ -1183,25 +1183,25 @@ static void handle_hw_conf(cmd_tbl_t *cmdtp, struct fdt_header *working_fdt, str
 		set_hw_property(working_fdt, "/spi@ff130000", "status", "disabled", 9);
 	}
 
-	if(hw_conf->uart2 && is_pwm2_pwm3_enable())
+	if(hw_conf->uart2 && is_pwm2_pwm3_enable(hw_conf))
 	{
 		set_hw_property(working_fdt, "/serial@ff690000", "status", "disabled", 9);
-		handle_pwm_conf();
+		handle_pwm_conf(hw_conf);
 	}
-	else if(hw_conf->uart2 && !is_pwm2_pwm3_enable())
+	else if(hw_conf->uart2 && !is_pwm2_pwm3_enable(hw_conf))
 	{
 		set_hw_property(working_fdt, "/serial@ff690000", "status", "okay", 5);
-		handle_pwm_conf();
+		handle_pwm_conf(hw_conf);
 	}
-	else if(!hw_conf->uart2 && is_pwm2_pwm3_enable())
+	else if(!hw_conf->uart2 && is_pwm2_pwm3_enable(hw_conf))
 	{
 		set_hw_property(working_fdt, "/serial@ff690000", "status", "disabled", 9);
-		handle_pwm_conf();
+		handle_pwm_conf(hw_conf);
 	}
 	else
 	{
 		set_hw_property(working_fdt, "/serial@ff690000", "status", "disabled", 9);
-		handle_pwm_conf();
+		handle_pwm_conf(hw_conf);
 	}
 
 	if(hw_conf->uart1)
