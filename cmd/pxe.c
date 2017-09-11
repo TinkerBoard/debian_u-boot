@@ -765,6 +765,8 @@ static unsigned long get_value(char *text, struct hw_config *hw_conf)
 	{
 		int name_length;
 #define DTS_OVERLAY_PROPERTY_LENGTH 12
+#define DTS_OVERLAY_PREFIX "/overlays/"
+#define DTS_PREFIX_LENGTH 10
 		int j = DTS_OVERLAY_PROPERTY_LENGTH; //dts_overlay file offset
 		i = j;
 
@@ -781,9 +783,14 @@ static unsigned long get_value(char *text, struct hw_config *hw_conf)
 		//printf("dts_overlay name length = %d\n", name_length);
 		if(name_length && name_length < MAX_OVERLAY_NAME_LENGTH)
 		{
-			memcpy(hw_conf->dts_overlay_name, text + DTS_OVERLAY_PROPERTY_LENGTH, name_length);
-			hw_conf->dts_overlay_name[name_length] = 0x00;
-			//printf("dts_overlay name = %s\n", hw_conf->dts_overlay_name);
+			memcpy(hw_conf->dts_overlay_name, DTS_OVERLAY_PREFIX, 
+				DTS_PREFIX_LENGTH);
+			memcpy(hw_conf->dts_overlay_name + DTS_PREFIX_LENGTH, 
+				text + DTS_OVERLAY_PROPERTY_LENGTH, name_length);
+			memcpy(hw_conf->dts_overlay_name + DTS_PREFIX_LENGTH + name_length, 
+				".dtbo", 5);
+			hw_conf->dts_overlay_name[DTS_PREFIX_LENGTH + name_length + 5] = 0x00;
+			printf("dts_overlay name = %s\n", hw_conf->dts_overlay_name);
 			hw_conf->dts_overlay = 1;
 		}
 		else

@@ -323,7 +323,7 @@
 	BOOTENV_SHARED_IDE \
 	BOOTENV_SHARED_UBIFS \
 	BOOTENV_SHARED_EFI \
-	"boot_prefixes=/ /boot/dts_overlays\0" \
+	"boot_prefixes=/ /boot/overlays\0" \
 	"boot_scripts=boot.scr.uimg boot.scr\0" \
 	"boot_script_dhcp=boot.scr.uimg\0" \
 	"autoload=no\0" \
