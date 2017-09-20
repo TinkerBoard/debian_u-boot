@@ -1304,10 +1304,10 @@ static int label_boot(cmd_tbl_t *cmdtp, struct pxe_label *label)
 		printf("hw_conf.uart4 = %d\n", hw_conf.uart4);
 		printf("hw_conf.pcm = %d\n", hw_conf.pcm_i2s);
 		printf("hw_conf.uart1 = %d\n", hw_conf.uart1);
-		printf("hw_conf.dts_overlay = %d\n", hw_conf.dts_overlay);
+		printf("hw_conf.dtoverlay = %d\n", hw_conf.dts_overlay);
 		if(hw_conf.dts_overlay)
 		{
-			printf("hw_conf.dts_overlay_name = %s\n", hw_conf.dts_overlay_name);
+			printf("hw_conf.dtoverlay_name = %s\n", hw_conf.dts_overlay_name);
 		}
 	}
 
