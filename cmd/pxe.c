@@ -816,7 +816,7 @@ static void handle_dts_param(struct fdt_header *working_fdt, struct hw_config *h
 {
 	char property[MAX_PARAM_NAME_LENGTH];
 	char value[MAX_PARAM_NAME_LENGTH];
-	int i = 0, j = 0, length, stop = 0;
+	int i = 0, j = 0, length;
 
 	while (j < MAX_PARAM_NAME_LENGTH)
 	{
@@ -994,6 +994,40 @@ static void handle_hw_conf(cmd_tbl_t *cmdtp, struct fdt_header *working_fdt, str
                 handle_dts_param(working_fdt, hw_conf);
         }
 }
+/**
+ * append_rootfs_path() - auto detect the boot image is located at emmc or sdcard
+ * then add the rootfs path into kernel cmdline
+ *
+ * If user is boot from usb/pxe/dhcp or user had been assign the rootfs path,
+ * then this function will do nothing
+ *
+ * @bootargs: the kernel cmdline which is parsed from /extlinux/extlinux.conf
+ */
+static void append_rootfs_path(char *bootargs)
+{
+	char *pRootfs = strstr(bootargs, "root=");
+
+	if(pRootfs) {
+		printf("user had been assigned the rootfs path\n");
+		return;
+	}
+	else {
+		printf("user do not assign the rootfs path, append it ");
+
+		// boot from emmc or sdcard
+		if(strncmp(fs_argv[1], "mmc", 3)==0) {
+			char *sdev = getenv("devnum");
+			if(strncmp(sdev, "0", 1)==0) {
+				strcat(bootargs, " root=/dev/mmcblk1p2");
+				printf("=> emmc boot\n");
+			}
+			else if(strncmp(sdev, "1", 1)==0) {
+				strcat(bootargs, " root=/dev/mmcblk0p2");
+				printf("=> sd card boot\n");
+			}
+		}
+	}
+}
 
 /*
  * Boot according to the contents of a pxe_label.
@@ -1119,7 +1153,7 @@ static int label_boot(cmd_tbl_t *cmdtp, struct pxe_label *label)
 		strcat(bootargs, ip_str);
 		strcat(bootargs, mac_str);
 		strcat(bootargs, ARG_U_BOOT_VERSION);
-
+		append_rootfs_path(bootargs);
 		cli_simple_process_macros(bootargs, finalbootargs);
 		setenv("bootargs", finalbootargs);
 		printf("append: %s\n", finalbootargs);
