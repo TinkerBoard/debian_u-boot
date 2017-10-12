@@ -800,6 +800,7 @@ static init_fnc_t init_sequence_r[] = {
 #ifdef CONFIG_CMD_ONENAND
 	initr_onenand,
 #endif
+	check_force_enter_ums_mode,
 #ifdef CONFIG_MMC
 	initr_mmc,
 #endif
