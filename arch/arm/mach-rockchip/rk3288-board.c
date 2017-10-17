@@ -136,6 +136,7 @@ int check_force_enter_ums_mode(void)
 			writel(tmp | 0xc0, RKIO_GPIO6_PHYS + GPIO_SWPORT_DR);
 			tmp = readl(RKIO_GPIO6_PHYS + GPIO_SWPORT_DDR);
 			writel(tmp | 0xc0, RKIO_GPIO6_PHYS + GPIO_SWPORT_DDR);
+			mdelay(10);
 		}
 	}
 	return 0;
