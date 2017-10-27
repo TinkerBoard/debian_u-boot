@@ -185,6 +185,27 @@ static int phycore_init(void)
 }
 #endif
 
+/*
+*
+* usb current limit : GPIO6_A6 (H:unlock, L:lock)
+*
+*/
+void usb_current_limit_ctrl(bool unlock_current)
+{
+	int tmp;
+
+#include <asm/arch/gpio.h>
+
+	tmp = readl(RKIO_GPIO6_PHYS + GPIO_SWPORT_DR);
+	if(unlock_current == true)
+		writel(tmp | 0x40, RKIO_GPIO6_PHYS + GPIO_SWPORT_DR);
+	else
+		writel(tmp & ~0x40, RKIO_GPIO6_PHYS + GPIO_SWPORT_DR);
+
+	tmp = readl(RKIO_GPIO6_PHYS + GPIO_SWPORT_DDR);
+	writel(tmp | 0x40, RKIO_GPIO6_PHYS + GPIO_SWPORT_DDR);
+}
+
 void board_init_f(ulong dummy)
 {
 	struct udevice *pinctrl;
@@ -213,6 +234,7 @@ void board_init_f(ulong dummy)
 	 */
 	debug_uart_init();
 	debug("\nspl:debug uart enabled in %s\n", __func__);
+	usb_current_limit_ctrl(true);
 	ret = spl_early_init();
 	if (ret) {
 		debug("spl_early_init() failed: %d\n", ret);
