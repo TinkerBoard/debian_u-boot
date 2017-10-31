@@ -219,11 +219,12 @@ void board_init_f(ulong dummy)
 #define GRF_BASE	0xff770000
 	struct rk3288_grf * const grf = (void *)GRF_BASE;
 
-	rk_clrsetreg(&grf->gpio5b_iomux,
-				GPIO5B1_MASK << GPIO5B1_SHIFT |
-				GPIO5B0_MASK << GPIO5B0_SHIFT,
-				GPIO5B1_UART1BB_SOUT << GPIO5B1_SHIFT |
-				GPIO5B0_UART1BB_SIN << GPIO5B0_SHIFT);
+	rk_clrsetreg(&grf->gpio7a_iomux,
+				GPIO7A7_MASK << GPIO7A7_SHIFT,
+				GPIO7A7_UART3GPS_SIN << GPIO7A7_SHIFT);
+	rk_clrsetreg(&grf->gpio7b_iomux,
+				GPIO7B0_MASK << GPIO7B0_SHIFT,
+				GPIO7B0_UART3GPS_SOUT << GPIO7B0_SHIFT);
 	/*
 	 * Debug UART can be used from here if required:
 	 *

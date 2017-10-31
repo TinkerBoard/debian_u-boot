@@ -12,7 +12,7 @@
 	compatible = "rockchip,rk3288-tinker", "rockchip,rk3288";
 
 	chosen {
-		stdout-path = &uart1;
+		stdout-path = &uart3;
 	};
 };
 
@@ -42,7 +42,7 @@
 	status = "okay";
 };
 
-&uart1 {
+&uart3 {
 	u-boot,dm-pre-reloc;
 	reg-shift = <2>;
 };
