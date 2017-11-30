@@ -22,6 +22,10 @@
 #include "cli.h"
 
 #define MAX_TFTP_PATH_LEN 127
+#define NO_DEFINE	2
+#define VALUE_ON 	1
+#define VALUE_OFF 	0
+
 
 const char *pxe_default_paths[] = {
 #ifdef CONFIG_SYS_SOC
@@ -765,7 +769,7 @@ fail:
 
 static int is_pwm2_pwm3_enable(struct hw_config *hw_conf)
 {
-	if(hw_conf->pwm2 || hw_conf->pwm3)
+	if(hw_conf->pwm2 == VALUE_ON || hw_conf->pwm3 == VALUE_ON)
 	    return 1;
 	else
 	    return 0;
@@ -773,24 +777,31 @@ static int is_pwm2_pwm3_enable(struct hw_config *hw_conf)
 
 static void handle_pwm_conf(struct hw_config *hw_conf)
 {
-	if(hw_conf->pwm2)
+	if(hw_conf->pwm2 == VALUE_ON)
 	{
 		set_hw_property(working_fdt, "/pwm@ff680020", "status", "okay", 5);
 	}
-	else
+	else if(hw_conf->pwm2 == VALUE_OFF)
 	{
 		set_hw_property(working_fdt, "/pwm@ff680020", "status", "disabled", 9);
 	}
+	else
+	{
+		/*do nothing*/
+	}
 
-	if(hw_conf->pwm3)
+	if(hw_conf->pwm3 == VALUE_ON)
 	{
 		set_hw_property(working_fdt, "/pwm@ff680030", "status", "okay", 5);
 	}
-	else
+	else if(hw_conf->pwm3 == VALUE_OFF)
 	{
 		set_hw_property(working_fdt, "/pwm@ff680030", "status", "disabled", 9);
 	}
-
+	else
+	{
+		/*do nothing*/
+	}
 }
 
 static void set_dts_param(struct fdt_header *working_fdt, char *property, char *value )
@@ -893,100 +904,139 @@ static void handle_hw_conf(cmd_tbl_t *cmdtp, struct fdt_header *working_fdt, str
 	}
 #endif
 
-	if(hw_conf->i2c1)
+	if(hw_conf->i2c1 == VALUE_ON)
 	{
 		set_hw_property(working_fdt, "/i2c@ff140000", "status", "okay", 5);
 	}
-	else
+	else if(hw_conf->i2c1 == VALUE_OFF)
 	{
 		set_hw_property(working_fdt, "/i2c@ff140000", "status", "disabled", 9);
 	}
+	else
+	{
+		/*do nothing*/
+	}
 
-	if(hw_conf->i2c4)
+	if(hw_conf->i2c4 == VALUE_ON)
 	{
 		set_hw_property(working_fdt, "/i2c@ff160000", "status", "okay", 5);
 	}
-	else
+	else if(hw_conf->i2c4 == VALUE_OFF)
 	{
 		set_hw_property(working_fdt, "/i2c@ff160000", "status", "disabled", 9);
 	}
+	else
+	{
+		/*do nothing*/
+	}
 
-	if(hw_conf->spi2)
+	if(hw_conf->spi2 == VALUE_ON)
 	{
 		set_hw_property(working_fdt, "/spi@ff130000", "status", "okay", 5);
 	}
-	else
+	else if(hw_conf->spi2 == VALUE_OFF)
 	{
 		set_hw_property(working_fdt, "/spi@ff130000", "status", "disabled", 9);
 	}
+	else
+	{
+		/*do nothing*/
+	}
 
-	if(hw_conf->uart2 && is_pwm2_pwm3_enable(hw_conf))
+	/*PWM has higher priority*/
+	if(is_pwm2_pwm3_enable(hw_conf))
 	{
 		set_hw_property(working_fdt, "/serial@ff690000", "status", "disabled", 9);
 		handle_pwm_conf(hw_conf);
 	}
-	else if(hw_conf->uart2 && !is_pwm2_pwm3_enable(hw_conf))
+	else if(!is_pwm2_pwm3_enable(hw_conf) && hw_conf->uart2 == VALUE_ON)
 	{
 		set_hw_property(working_fdt, "/serial@ff690000", "status", "okay", 5);
+		hw_conf->pwm2 = VALUE_OFF;
+		hw_conf->pwm3 = VALUE_OFF;
 		handle_pwm_conf(hw_conf);
 	}
-	else if(!hw_conf->uart2 && is_pwm2_pwm3_enable(hw_conf))
+	else if(!is_pwm2_pwm3_enable(hw_conf) && hw_conf->uart2 == VALUE_OFF)
 	{
 		set_hw_property(working_fdt, "/serial@ff690000", "status", "disabled", 9);
 		handle_pwm_conf(hw_conf);
 	}
 	else
 	{
-		set_hw_property(working_fdt, "/serial@ff690000", "status", "disabled", 9);
-		handle_pwm_conf(hw_conf);
+		/*do nothing*/
 	}
 
-	if(hw_conf->uart1)
+	if(hw_conf->uart1 == VALUE_ON)
 	{
 		set_hw_property(working_fdt, "/serial@ff190000", "status", "okay", 5);
 	}
-	else
+	else if(hw_conf->uart1 == VALUE_OFF)
 	{
 		set_hw_property(working_fdt, "/serial@ff190000", "status", "disabled", 9);
 	}
+	else
+	{
+		/*do nothing*/
+	}
 
-	if(hw_conf->spi0 && hw_conf->uart4)
+	/*UART4 has higher priority*/
+	if(hw_conf->uart4 == VALUE_ON)
 	{
 		set_hw_property(working_fdt, "/spi@ff110000", "status", "disabled", 9);
 		set_hw_property(working_fdt, "/serial@ff1c0000", "status", "okay", 5);
 	}
-	else if (hw_conf->spi0 && !hw_conf->uart4)
+	else if ( hw_conf->uart4 == VALUE_OFF && hw_conf->spi0 == VALUE_ON)
 	{
 		set_hw_property(working_fdt, "/spi@ff110000", "status", "okay", 5);
 		set_hw_property(working_fdt, "/serial@ff1c0000", "status", "disabled", 9);
 	}
-	else if (!hw_conf->spi0 && hw_conf->uart4)
-	{
-		set_hw_property(working_fdt, "/spi@ff110000", "status", "disabled", 9);
-		set_hw_property(working_fdt, "/serial@ff1c0000", "status", "okay", 5);
-	}
-	else
+	else if ( hw_conf->uart4 == VALUE_OFF && hw_conf->spi0 == VALUE_OFF)
 	{
 		set_hw_property(working_fdt, "/spi@ff110000", "status", "disabled", 9);
 		set_hw_property(working_fdt, "/serial@ff1c0000", "status", "disabled", 9);
 	}
+	else if ( hw_conf->uart4 == VALUE_OFF && hw_conf->spi0 == NO_DEFINE)
+	{
+		set_hw_property(working_fdt, "/serial@ff1c0000", "status", "disabled", 9);
+	}
+	else if (hw_conf->uart4 == NO_DEFINE && hw_conf->spi0 == VALUE_ON)
+	{
+		set_hw_property(working_fdt, "/spi@ff110000", "status", "okay", 5);
+		set_hw_property(working_fdt, "/serial@ff1c0000", "status", "disabled", 9);
+	}
+	else if (hw_conf->uart4 == NO_DEFINE && hw_conf->spi0 == VALUE_OFF)
+	{
+		set_hw_property(working_fdt, "/spi@ff110000", "status", "disabled", 9);
+	}
+	else
+	{
+		/*do nothing*/
+	}
 
-	if(hw_conf->uart3)
+	if(hw_conf->uart3 == VALUE_ON)
 	{
 		set_hw_property(working_fdt, "/serial@ff1b0000", "status", "okay", 5);
 	}
-	else
+	else if(hw_conf->uart3 == VALUE_OFF)
 	{
 		set_hw_property(working_fdt, "/serial@ff1b0000", "status", "disabled", 9);
 	}
+	else
+	{
+		/*do nothing*/
+	}
 
-	if(hw_conf->pcm_i2s)
+	if(hw_conf->pcm_i2s == VALUE_ON)
 	{
 		set_hw_property(working_fdt, "/i2s@ff890000", "status", "okay", 5);
 	}
-	else
+	else if(hw_conf->pcm_i2s == VALUE_OFF)
 	{
 		set_hw_property(working_fdt, "/i2s@ff890000", "status", "disabled", 9);
+	}
+	else
+	{
+		/*do nothing*/
 	}
 
         if(hw_conf->dts_param)
@@ -1056,7 +1106,7 @@ static int label_boot(cmd_tbl_t *cmdtp, struct pxe_label *label)
 	void *buf;
 	struct hw_config hw_conf;
 
-	memset(&hw_conf, 0, sizeof(struct hw_config));
+	memset(&hw_conf, NO_DEFINE, sizeof(struct hw_config));
 	parse_hw_config(cmdtp, &hw_conf);
 
 	{
