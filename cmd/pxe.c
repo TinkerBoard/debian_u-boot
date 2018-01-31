@@ -1106,7 +1106,19 @@ static int label_boot(cmd_tbl_t *cmdtp, struct pxe_label *label)
 	void *buf;
 	struct hw_config hw_conf;
 
-	memset(&hw_conf, NO_DEFINE, sizeof(struct hw_config));
+	memset(&hw_conf, 0, sizeof(struct hw_config));
+	hw_conf.i2c1 = NO_DEFINE;
+	hw_conf.i2c4 = NO_DEFINE;
+	hw_conf.spi2 = NO_DEFINE;
+	hw_conf.pwm2 = NO_DEFINE;
+	hw_conf.pwm3 = NO_DEFINE;
+	hw_conf.spi0 = NO_DEFINE;
+	hw_conf.uart2 = NO_DEFINE;
+	hw_conf.uart3 = NO_DEFINE;
+	hw_conf.uart4 = NO_DEFINE;
+	hw_conf.pcm = NO_DEFINE;
+	hw_conf.uart1 = NO_DEFINE;
+
 	parse_hw_config(cmdtp, &hw_conf);
 
 	{
