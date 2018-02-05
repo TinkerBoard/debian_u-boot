@@ -775,7 +775,7 @@ static int is_pwm2_pwm3_enable(struct hw_config *hw_conf)
 	    return 0;
 }
 
-static void handle_pwm_conf(struct hw_config *hw_conf)
+static void handle_pwm_conf(struct fdt_header *working_fdt, struct hw_config *hw_conf)
 {
 	if(hw_conf->pwm2 == VALUE_ON)
 	{
@@ -947,19 +947,19 @@ static void handle_hw_conf(cmd_tbl_t *cmdtp, struct fdt_header *working_fdt, str
 	if(is_pwm2_pwm3_enable(hw_conf))
 	{
 		set_hw_property(working_fdt, "/serial@ff690000", "status", "disabled", 9);
-		handle_pwm_conf(hw_conf);
+		handle_pwm_conf(working_fdt, hw_conf);
 	}
 	else if(!is_pwm2_pwm3_enable(hw_conf) && hw_conf->uart2 == VALUE_ON)
 	{
 		set_hw_property(working_fdt, "/serial@ff690000", "status", "okay", 5);
 		hw_conf->pwm2 = VALUE_OFF;
 		hw_conf->pwm3 = VALUE_OFF;
-		handle_pwm_conf(hw_conf);
+		handle_pwm_conf(working_fdt, hw_conf);
 	}
 	else if(!is_pwm2_pwm3_enable(hw_conf) && hw_conf->uart2 == VALUE_OFF)
 	{
 		set_hw_property(working_fdt, "/serial@ff690000", "status", "disabled", 9);
-		handle_pwm_conf(hw_conf);
+		handle_pwm_conf(working_fdt, hw_conf);
 	}
 	else
 	{
