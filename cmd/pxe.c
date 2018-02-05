@@ -914,7 +914,8 @@ static void handle_hw_conf(cmd_tbl_t *cmdtp, struct fdt_header *working_fdt, str
 	}
 	else
 	{
-		/*do nothing*/
+		//default disable
+		set_hw_property(working_fdt, "/i2c@ff140000", "status", "disabled", 9);
 	}
 
 	if(hw_conf->i2c4 == VALUE_ON)
@@ -927,7 +928,8 @@ static void handle_hw_conf(cmd_tbl_t *cmdtp, struct fdt_header *working_fdt, str
 	}
 	else
 	{
-		/*do nothing*/
+		//default disable
+		set_hw_property(working_fdt, "/i2c@ff160000", "status", "disabled", 9);
 	}
 
 	if(hw_conf->spi2 == VALUE_ON)
@@ -940,7 +942,8 @@ static void handle_hw_conf(cmd_tbl_t *cmdtp, struct fdt_header *working_fdt, str
 	}
 	else
 	{
-		/*do nothing*/
+		//default disable
+		set_hw_property(working_fdt, "/spi@ff130000", "status", "disabled", 9);
 	}
 
 	/*PWM has higher priority*/
@@ -959,11 +962,17 @@ static void handle_hw_conf(cmd_tbl_t *cmdtp, struct fdt_header *working_fdt, str
 	else if(!is_pwm2_pwm3_enable(hw_conf) && hw_conf->uart2 == VALUE_OFF)
 	{
 		set_hw_property(working_fdt, "/serial@ff690000", "status", "disabled", 9);
+		hw_conf->pwm2 = VALUE_OFF;
+		hw_conf->pwm3 = VALUE_OFF;
 		handle_pwm_conf(working_fdt, hw_conf);
 	}
 	else
 	{
-		/*do nothing*/
+		//default disable
+		set_hw_property(working_fdt, "/serial@ff690000", "status", "disabled", 9);
+		hw_conf->pwm2 = VALUE_OFF;
+		hw_conf->pwm3 = VALUE_OFF;
+		handle_pwm_conf(working_fdt, hw_conf);
 	}
 
 	if(hw_conf->uart1 == VALUE_ON)
@@ -976,7 +985,8 @@ static void handle_hw_conf(cmd_tbl_t *cmdtp, struct fdt_header *working_fdt, str
 	}
 	else
 	{
-		/*do nothing*/
+		//default disable
+		set_hw_property(working_fdt, "/serial@ff190000", "status", "disabled", 9);
 	}
 
 	/*UART4 has higher priority*/
@@ -998,6 +1008,8 @@ static void handle_hw_conf(cmd_tbl_t *cmdtp, struct fdt_header *working_fdt, str
 	else if ( hw_conf->uart4 == VALUE_OFF && hw_conf->spi0 == NO_DEFINE)
 	{
 		set_hw_property(working_fdt, "/serial@ff1c0000", "status", "disabled", 9);
+		//default disable
+		set_hw_property(working_fdt, "/spi@ff110000", "status", "disabled", 9);
 	}
 	else if (hw_conf->uart4 == NO_DEFINE && hw_conf->spi0 == VALUE_ON)
 	{
@@ -1007,10 +1019,14 @@ static void handle_hw_conf(cmd_tbl_t *cmdtp, struct fdt_header *working_fdt, str
 	else if (hw_conf->uart4 == NO_DEFINE && hw_conf->spi0 == VALUE_OFF)
 	{
 		set_hw_property(working_fdt, "/spi@ff110000", "status", "disabled", 9);
+		//default disable
+		set_hw_property(working_fdt, "/serial@ff1c0000", "status", "disabled", 9);
 	}
 	else
 	{
-		/*do nothing*/
+		//default disable
+		set_hw_property(working_fdt, "/spi@ff110000", "status", "disabled", 9);
+		set_hw_property(working_fdt, "/serial@ff1c0000", "status", "disabled", 9);
 	}
 
 	if(hw_conf->uart3 == VALUE_ON)
@@ -1023,7 +1039,8 @@ static void handle_hw_conf(cmd_tbl_t *cmdtp, struct fdt_header *working_fdt, str
 	}
 	else
 	{
-		/*do nothing*/
+		//default disable
+		set_hw_property(working_fdt, "/serial@ff1b0000", "status", "disabled", 9);
 	}
 
 	if(hw_conf->pcm_i2s == VALUE_ON)
@@ -1036,7 +1053,8 @@ static void handle_hw_conf(cmd_tbl_t *cmdtp, struct fdt_header *working_fdt, str
 	}
 	else
 	{
-		/*do nothing*/
+		//default disable
+		set_hw_property(working_fdt, "/i2s@ff890000", "status", "disabled", 9);
 	}
 
         if(hw_conf->dts_param)
@@ -1118,6 +1136,7 @@ static int label_boot(cmd_tbl_t *cmdtp, struct pxe_label *label)
 	hw_conf.uart4 = NO_DEFINE;
 	hw_conf.pcm = NO_DEFINE;
 	hw_conf.uart1 = NO_DEFINE;
+	hw_conf.pcm_i2s = NO_DEFINE;
 
 	parse_hw_config(cmdtp, &hw_conf);
 
