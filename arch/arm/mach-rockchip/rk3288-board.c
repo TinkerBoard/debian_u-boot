@@ -174,19 +174,11 @@ int check_force_enter_ums_mode(void)
 	// read GPIO2_B2/GPIO2_B1/GPIO2_B0 value
 	pcbid = (readl(RKIO_GPIO2_PHYS + GPIO_EXT_PORT) & 0x700) >> 8;
 
-	// only Tinker Board S and the PR stage PCB has this function
-	if(projectid!=TinkerBoard && pcbid >= ER){
-		printf("PC event = 0x%x\n", readl(RKIO_GPIO6_PHYS + GPIO_EXT_PORT)&0x20);
-		if((readl(RKIO_GPIO6_PHYS + GPIO_EXT_PORT)&0x20)==0x20) {
-			// SDP detected, enable EMMC and unlock usb current limit
-			printf("usb connected to SDP, force enter ums mode\n");
-			force_ums = true;
-			rk3288_maskrom_ctrl(true);
-			usb_current_limit_ctrl(true);
-		} else {
-			usb_current_limit_ctrl(false);
-		}
-	}
+	if((readl(RKIO_GPIO6_PHYS + GPIO_EXT_PORT)&0x20)==0x20) {
+		printf("usb connected to SDP, unlock usb current limit\n");
+		usb_current_limit_ctrl(true);
+	} else
+		usb_current_limit_ctrl(false);
 	return 0;
 }
 
