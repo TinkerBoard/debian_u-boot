@@ -79,7 +79,29 @@ __weak int mmc_get_env_addr(struct mmc *mmc, int copy, u32 *env_addr)
 
 __weak int mmc_get_env_dev(void)
 {
-	return CONFIG_SYS_MMC_ENV_DEV;
+	/* MMC0 is eMMC */
+	int envdev = 0;
+	struct mmc *mmc = find_mmc_device(envdev);
+	const char *errmsg;
+
+	printf("Test MMC(%d)...\n", envdev);
+
+	/* No MMC device found */
+	if (!mmc)
+		return CONFIG_SYS_MMC_ENV_DEV;
+
+#ifdef CONFIG_BLK
+	struct udevice *dev;
+	/* No block device */
+	if (blk_get_from_parent(mmc->dev, &dev))
+		return CONFIG_SYS_MMC_ENV_DEV;
+#else
+	/* MMC init failed */
+	if (mmc_init(mmc))
+		return CONFIG_SYS_MMC_ENV_DEV;
+#endif
+
+	return envdev;
 }
 
 int env_init(void)
