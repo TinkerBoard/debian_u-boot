@@ -34,6 +34,640 @@ DECLARE_GLOBAL_DATA_PTR;
 /* Defined by rockchip legacy mkboot tool(SDK version < 8.1) */
 #define ANDROID_ROCKCHIP_LEGACY_PAGE_SIZE	0x4000
 
+#define MAX_OVERLAY_NAME_LENGTH 128
+
+struct hw_config
+{
+	int valid;
+
+	int fiq_debugger;
+	int i2c1, i2c4;
+	int spi0, spi2;
+	int pwm2, pwm3;
+	int pcm, pcm_i2s;
+	int uart1, uart2, uart3, uart4;
+
+	int overlay_count;
+	char **overlay_file;
+};
+
+static unsigned long hw_skip_comment(char *text)
+{
+	int i = 0;
+	if (*text == '#') {
+		while (*(text + i) != 0x00) {
+			if (*(text + (i++)) == 0x0a)
+				break;
+		}
+	}
+	return i;
+}
+
+static unsigned long hw_skip_line(char *text)
+{
+	if (*text == 0x0a)
+		return 1;
+	else
+		return 0;
+}
+
+static unsigned long get_intf_value(char *text, struct hw_config *hw_conf)
+{
+	int i = 0;
+	if (memcmp(text, "fiq_debugger=",  13) == 0) {
+		i = 13;
+		if (memcmp(text + i, "on", 2) == 0) {
+			hw_conf->fiq_debugger = 1;
+			hw_conf->uart1 = -1;
+			i = i + 2;
+		} else if (memcmp(text + i, "off", 3) == 0) {
+			hw_conf->fiq_debugger = -1;
+			i = i + 3;
+		} else
+			goto invalid_line;
+	} else if (memcmp(text, "i2c1=", 5) == 0) {
+		i = 5;
+		if (memcmp(text + i, "on", 2) == 0) {
+			hw_conf->i2c1 = 1;
+			i = i + 2;
+		} else if (memcmp(text + i, "off", 3) == 0) {
+			hw_conf->i2c1 = -1;
+			i = i + 3;
+		} else
+			goto invalid_line;
+	} else if (memcmp(text, "i2c4=",  5) == 0) {
+		i = 5;
+		if (memcmp(text + i, "on", 2) == 0) {
+			hw_conf->i2c4 = 1;
+			i = i + 2;
+		} else if (memcmp(text + i, "off", 3) == 0) {
+			hw_conf->i2c4 = -1;
+			i = i + 3;
+		} else
+			goto invalid_line;
+	} else if (memcmp(text, "spi0=", 5) == 0) {
+		i = 5;
+		if (memcmp(text + i, "on", 2) == 0) {
+			if (hw_conf->spi0 != -1)
+				hw_conf->spi0 = 1;
+			i = i + 2;
+		} else if (memcmp(text + i, "off", 3) == 0) {
+			hw_conf->spi0 = -1;
+			i = i + 3;
+		} else
+			goto invalid_line;
+	} else if (memcmp(text, "spi2=", 5) == 0) {
+		i = 5;
+		if (memcmp(text + i, "on", 2) == 0) {
+			hw_conf->spi2 = 1;
+			i = i + 2;
+		} else if (memcmp(text + i, "off", 3) == 0) {
+			hw_conf->spi2 = -1;
+			i = i + 3;
+		} else
+			goto invalid_line;
+	} else if (memcmp(text, "pwm2=", 5) == 0) {
+		i = 5;
+		if (memcmp(text + i, "on", 2) == 0) {
+			hw_conf->pwm2 = 1;
+			hw_conf->uart2 = -1;
+			i = i + 2;
+		} else if (memcmp(text + i, "off", 3) == 0) {
+			hw_conf->pwm2 = -1;
+			i = i + 3;
+		} else
+			goto invalid_line;
+	} else if (memcmp(text, "pwm3=", 5) == 0) {
+		i = 5;
+		if (memcmp(text + i, "on", 2) == 0) {
+			hw_conf->pwm3 = 1;
+			hw_conf->uart2 = -1;
+			i = i + 2;
+		} else if (memcmp(text + i, "off", 3) == 0) {
+			hw_conf->pwm3 = -1;
+			i = i + 3;
+		} else
+			goto invalid_line;
+	} else if (memcmp(text, "pcm=", 4) == 0) {
+		i = 4;
+		if (memcmp(text + i, "on", 2) == 0) {
+			hw_conf->pcm = 1;
+			i = i + 2;
+		} else if (memcmp(text + i, "off", 3) == 0) {
+			hw_conf->pcm = -1;
+			i = i + 3;
+		} else
+			goto invalid_line;
+	} else if (memcmp(text, "pcm_i2s=", 8) == 0) {
+		i = 8;
+		if (memcmp(text + i, "on", 2) == 0) {
+			hw_conf->pcm_i2s = 1;
+			i = i + 2;
+		} else if (memcmp(text + i, "off", 3) == 0) {
+			hw_conf->pcm_i2s = -1;
+			i = i + 3;
+		} else
+			goto invalid_line;
+	} else if (memcmp(text, "uart1=", 6) == 0) {
+		i = 6;
+		if (memcmp(text + i, "on", 2) == 0) {
+			if (hw_conf->fiq_debugger != 1)
+				hw_conf->uart1 = 1;
+			i = i + 2;
+		} else if (memcmp(text + i, "off", 3) == 0) {
+			hw_conf->uart1 = -1;
+			i = i + 3;
+		} else
+			goto invalid_line;
+	} else if (memcmp(text, "uart2=", 6) == 0) {
+		i = 6;
+		if (memcmp(text + i, "on", 2) == 0) {
+			if (hw_conf->uart2 != -1)
+				hw_conf->uart2 = 1;
+			i = i + 2;
+		} else if (memcmp(text + i, "off", 3) == 0) {
+			hw_conf->uart2 = -1;
+			i = i + 3;
+		} else
+			goto invalid_line;
+	} else if (memcmp(text, "uart3=", 6) == 0) {
+		i = 6;
+		if (memcmp(text + i, "on", 2) == 0) {
+			hw_conf->uart3 = 1;
+			i = i + 2;
+		} else if (memcmp(text + i, "off", 3) == 0) {
+			hw_conf->uart3 = -1;
+			i = i + 3;
+		} else
+			goto invalid_line;
+	} else if (memcmp(text, "uart4=", 6) == 0) {
+		i = 6;
+		if (memcmp(text + i, "on", 2) == 0) {
+			hw_conf->uart4 = 1;
+			hw_conf->spi0 = -1;
+			i = i + 2;
+		} else if (memcmp(text + i, "off", 3) == 0) {
+			hw_conf->uart4 = -1;
+			i = i + 3;
+		} else
+			goto invalid_line;
+	} else
+		goto invalid_line;
+
+	while (*(text + i) != 0x00) {
+		if (*(text + (i++)) == 0x0a)
+			break;
+	}
+	return i;
+
+invalid_line:
+	//It's not a legal line, skip it.
+	//printf("get_value: illegal line\n");
+	while (*(text + i) != 0x00) {
+		if (*(text + (i++)) == 0x0a)
+			break;
+	}
+	return i;
+}
+
+static int set_file_conf(char *text, struct hw_config *hw_conf, int start_point, int file_ptr)
+{
+	char *ptr;
+	int name_length;
+
+	name_length = file_ptr - start_point;
+
+	if (name_length && name_length < MAX_OVERLAY_NAME_LENGTH) {
+		ptr = (char*)calloc(MAX_OVERLAY_NAME_LENGTH, sizeof(char));
+		memcpy(ptr, text + start_point, name_length);
+		ptr[name_length] = 0x00;
+		hw_conf->overlay_file[hw_conf->overlay_count] = ptr;
+		hw_conf->overlay_count += 1;
+	}
+	//Pass a space for next string.
+	start_point = file_ptr + 1;
+
+	return start_point;
+}
+
+void count_overlay(char *text, struct hw_config *hw_conf)
+{
+	int i = 0;
+	int start_point = 0;
+	int overlay_count = 0;
+	int name_length;
+
+	while (*(text + i) != 0x00) {
+		if (*(text + i) == 0x20 || *(text + i) == 0x0a) {
+			name_length = i - start_point;
+			if (name_length && name_length < MAX_OVERLAY_NAME_LENGTH)
+				overlay_count += 1;
+		}
+
+		if (*(text + i) == 0x20)
+			start_point = i + 1;
+		else if (*(text + i) == 0x0a)
+			break;
+		i++;
+	}
+
+	hw_conf->overlay_file = (char**)calloc(overlay_count, sizeof(char*));
+}
+
+static unsigned long get_overlay(char *text, struct hw_config *hw_conf)
+{
+	int i = 0;
+	int start_point = 0;
+
+	hw_conf->overlay_count = 0;
+	while (*(text + i) != 0x00) {
+		if (*(text + i) == 0x20 || *(text + i) == 0x0a)
+			start_point = set_file_conf(text, hw_conf, start_point, i);
+
+		if (*(text + i) == 0x0a) {
+			i++;
+			break;
+		} else
+			i++;
+	}
+
+	return i;
+}
+
+static unsigned long hw_parse_property(char *text, struct hw_config *hw_conf)
+{
+	int i = 0;
+	if (memcmp(text, "intf:", 5) == 0) {
+		i = 5;
+		i = i + get_intf_value(text + i, hw_conf);
+	} else if(memcmp(text, "overlay=", 8) == 0) {
+		i = 8;
+		count_overlay(text + i, hw_conf);
+		i = i + get_overlay(text + i, hw_conf);
+	} else {
+		printf("[conf] hw_parse_property: illegal line\n");
+		//It's not a legal line, skip it.
+		while (*(text + i) != 0x00) {
+			if (*(text + (i++)) == 0x0a)
+				break;
+		}
+	}
+	return i;
+}
+
+static void parse_hw_config(struct hw_config *hw_conf)
+{
+	unsigned long count, offset = 0, addr, size;
+	char *file_addr, *devnum;
+	static char *fs_argv[5];
+
+	int valid = 0;
+
+	devnum = env_get("devnum");
+	if (!devnum) {
+		printf("Can't get devnum\n");
+		goto end;
+	}
+
+	file_addr = env_get("conf_addr");
+	if (!file_addr) {
+		printf("Can't get conf_addr address\n");
+		goto end;
+	}
+
+	addr = simple_strtoul(file_addr, NULL, 16);
+	if (!addr)
+		printf("Can't set addr\n");
+
+	fs_argv[0] = "ext2load";
+	fs_argv[1] = "mmc";
+
+	if (!strcmp(devnum, "0"))
+		fs_argv[2] = "0:7";
+	else if (!strcmp(devnum, "1"))
+		fs_argv[2] = "1:7";
+	else {
+		printf("Invalid devnum\n");
+		goto end;
+	}
+
+	fs_argv[3] = file_addr;
+	fs_argv[4] = "config.txt";
+
+	if (do_ext2load(NULL, 0, 5, fs_argv)) {
+		printf("[conf] do_ext2load fail\n");
+		goto end;
+	}
+
+	size = env_get_ulong("filesize", 16, 0);
+	if (!size) {
+		printf("[conf] Can't get filesize\n");
+		goto end;
+	}
+
+	valid = 1;
+	printf("config.txt size = %lu\n", size);
+
+	*((char *)file_addr + size) = 0x00;
+
+	while (offset != size) {
+		count = hw_skip_comment((char *)(addr + offset));
+		if (count > 0) {
+			offset = offset + count;
+			continue;
+		}
+		count = hw_skip_line((char *)(addr + offset));
+		if (count > 0) {
+			offset = offset + count;
+			continue;
+		}
+		count = hw_parse_property((char *)(addr + offset), hw_conf);
+		if (count > 0) {
+			offset = offset + count;
+			continue;
+		}
+	}
+end:
+	hw_conf->valid = valid;
+}
+
+static int set_hw_property(struct fdt_header *working_fdt, char *path, char *property, char *value, int length)
+{
+	int offset;
+	int ret;
+
+	printf("set_hw_property: %s %s %s\n", path, property, value);
+	offset = fdt_path_offset (working_fdt, path);
+	if (offset < 0) {
+		printf("libfdt fdt_path_offset() returned %s\n", fdt_strerror(offset));
+		return -1;
+	}
+	ret = fdt_setprop(working_fdt, offset, property, value, length);
+	if (ret < 0) {
+		printf("libfdt fdt_setprop(): %s\n", fdt_strerror(ret));
+		return -1;
+	}
+
+	return 0;
+}
+
+static int flash_gpio(struct fdt_header *working_fdt, char *path, char *property)
+{
+	int offset, len;;
+	const fdt32_t *cell;
+
+	int pin22[3] = {7, 22, 0};
+	int pin23[3] = {7, 23, 0};
+	int backlight[4] = {7, 2, 0, 166};
+
+	printf("flash_gpio: %s %s\n", path, property);
+
+	offset = fdt_path_offset (working_fdt, path);
+	if (offset < 0) {
+		printf("libfdt fdt_path_offset() returned %s\n", fdt_strerror(offset));
+		return -1;
+	}
+
+	cell = fdt_getprop(working_fdt, offset, property, &len);
+	if (!cell) {
+		printf("libfdt fdt_getprop() fail\n");
+		return -1;
+	} else {
+		int i, j;
+		uint32_t adj_val;
+		int get_pin22, get_pin23;
+
+		for (i = 0; i < len; i++) {
+			get_pin22 = 1;
+			get_pin23 = 1;
+
+			for (j = 0; j < 3; j++) {
+				if (fdt32_to_cpu(cell[i + j]) != pin22[j])
+					get_pin22 = 0;
+				if (fdt32_to_cpu(cell[i + j]) != pin23[j])
+					get_pin23 = 0;
+			}
+
+			if (get_pin22 || get_pin23) {
+				for (j = 0; j < 4; j++) {
+					adj_val = backlight[j];
+					adj_val = cpu_to_fdt32(adj_val);
+					fdt_setprop_inplace_namelen_partial(working_fdt, offset, property, strlen(property), (i+j)*4, &adj_val, sizeof(adj_val));
+				}
+                        }
+		}
+	}
+
+	return 0;
+}
+
+static struct fdt_header *resize_working_fdt(void)
+{
+	struct fdt_header *working_fdt;
+	unsigned long file_addr;
+	int err;
+
+	file_addr = env_get_ulong("fdt_addr_r", 16, 0);
+	if (!file_addr) {
+		printf("Can't get fdt address\n");
+		return NULL;
+	}
+
+	working_fdt = map_sysmem(file_addr, 0);
+	err = fdt_open_into(working_fdt, working_fdt, (1024 * 1024));
+	if (err != 0) {
+		printf("libfdt fdt_open_into(): %s\n", fdt_strerror(err));
+		return NULL;
+	}
+
+	printf("fdt magic number %x\n", working_fdt->magic);
+	printf("fdt size %u\n", fdt_totalsize(working_fdt));
+
+	return working_fdt;
+}
+
+#ifdef CONFIG_OF_LIBFDT_OVERLAY
+static int fdt_valid(struct fdt_header **blobp)
+{
+	const void *blob = *blobp;
+	int err;
+
+	if (blob == NULL) {
+		printf ("The address of the fdt is invalid (NULL).\n");
+		return 0;
+	}
+
+	err = fdt_check_header(blob);
+	if (err == 0)
+		return 1;	/* valid */
+
+	if (err < 0) {
+		printf("libfdt fdt_check_header(): %s", fdt_strerror(err));
+		/*
+		 * Be more informative on bad version.
+		 */
+		if (err == -FDT_ERR_BADVERSION) {
+			if (fdt_version(blob) < FDT_FIRST_SUPPORTED_VERSION) {
+				printf (" - too old, fdt %d < %d", fdt_version(blob), FDT_FIRST_SUPPORTED_VERSION);
+			}
+			if (fdt_last_comp_version(blob) > FDT_LAST_SUPPORTED_VERSION) {
+				printf (" - too new, fdt %d > %d", fdt_version(blob), FDT_LAST_SUPPORTED_VERSION);
+			}
+		}
+		printf("\n");
+		*blobp = NULL;
+		return 0;
+	}
+	return 1;
+}
+
+static int merge_dts_overlay(cmd_tbl_t *cmdtp, struct fdt_header *working_fdt, char *overlay_name)
+{
+	unsigned long addr;
+	char *file_addr, *devnum;
+	struct fdt_header *blob;
+	int ret;
+	char overlay_file[] = "overlays/";
+
+	static char *fs_argv[5];
+
+	devnum = env_get("devnum");
+	if (!devnum) {
+		printf("Can't get devnum\n");
+		goto fail;
+	}
+
+	file_addr = env_get("fdt_overlay_addr");
+	if (!file_addr) {
+		printf("Can't get fdt overlay address\n");
+		goto fail;
+	}
+
+	addr = simple_strtoul(file_addr, NULL, 16);
+
+	strcat(overlay_file, overlay_name);
+	strncat(overlay_file, ".dtbo", 6);
+
+	fs_argv[0] = "ext2load";
+	fs_argv[1] = "mmc";
+
+	if (!strcmp(devnum, "0"))
+		fs_argv[2] = "0:7";
+	else if (!strcmp(devnum, "1"))
+		fs_argv[2] = "1:7";
+	else {
+		printf("Invalid devnum\n");
+		goto fail;
+	}
+
+	fs_argv[3] = file_addr;
+	fs_argv[4] = overlay_file;
+
+	if (do_ext2load(NULL, 0, 5, fs_argv)) {
+		printf("[merge_dts_overlay] do_ext2load fail\n");
+		goto fail;
+	}
+
+	blob = map_sysmem(addr, 0);
+	if (!fdt_valid(&blob)) {
+		printf("[merge_dts_overlay] fdt_valid is invalid\n");
+		goto fail;
+	} else
+		printf("fdt_valid\n");
+
+	ret = fdt_overlay_apply(working_fdt, blob);
+	if (ret) {
+		printf("[merge_dts_overlay] fdt_overlay_apply(): %s\n", fdt_strerror(ret));
+		goto fail;
+	}
+
+	return 0;
+
+fail:
+	return -1;
+}
+#endif
+
+static void handle_hw_conf(cmd_tbl_t *cmdtp, struct fdt_header *working_fdt, struct hw_config *hw_conf)
+{
+	if (working_fdt == NULL)
+		return;
+
+#ifdef CONFIG_OF_LIBFDT_OVERLAY
+	int i;
+	for (i = 0; i < hw_conf->overlay_count; i++) {
+		if (merge_dts_overlay(cmdtp, working_fdt, hw_conf->overlay_file[i]) < 0)
+			printf("Can't merge dts overlay: %s\n", hw_conf->overlay_file[i]);
+		else
+			printf("Merged dts overlay: %s\n", hw_conf->overlay_file[i]);
+
+		free(hw_conf->overlay_file[i]);
+	}
+	free(hw_conf->overlay_file);
+#endif
+
+	if (hw_conf->fiq_debugger == 1)
+		set_hw_property(working_fdt, "/fiq-debugger", "status", "okay", 5);
+	else if (hw_conf->fiq_debugger == -1)
+		set_hw_property(working_fdt, "/fiq-debugger", "status", "disabled", 9);
+
+	if (hw_conf->i2c1 == 1)
+		set_hw_property(working_fdt, "/i2c@ff140000", "status", "okay", 5);
+	else if (hw_conf->i2c1 == -1)
+		set_hw_property(working_fdt, "/i2c@ff140000", "status", "disabled", 9);
+
+	if (hw_conf->i2c4 == 1)
+		set_hw_property(working_fdt, "/i2c@ff160000", "status", "okay", 5);
+	else if (hw_conf->i2c4 == -1)
+		set_hw_property(working_fdt, "/i2c@ff160000", "status", "disabled", 9);
+
+	if (hw_conf->spi0 == 1)
+		set_hw_property(working_fdt, "/spi@ff110000", "status", "okay", 5);
+	else if (hw_conf->spi0 == -1)
+		set_hw_property(working_fdt, "/spi@ff110000", "status", "disabled", 9);
+
+	if (hw_conf->spi2 == 1)
+		set_hw_property(working_fdt, "/spi@ff130000", "status", "okay", 5);
+	else if (hw_conf->spi2 == -1)
+		set_hw_property(working_fdt, "/spi@ff130000", "status", "disabled", 9);
+
+	if (hw_conf->pwm2 == 1)
+		set_hw_property(working_fdt, "/pwm@ff680020", "status", "okay", 5);
+	else if (hw_conf->pwm2 == -1)
+		set_hw_property(working_fdt, "/pwm@ff680020", "status", "disabled", 9);
+
+	if (hw_conf->pwm3 == 1)
+		set_hw_property(working_fdt, "/pwm@ff680030", "status", "okay", 5);
+	else if (hw_conf->pwm3 == -1)
+		set_hw_property(working_fdt, "/pwm@ff680030", "status", "disabled", 9);
+
+	if (hw_conf->uart1 == 1)
+		set_hw_property(working_fdt, "/serial@ff190000", "status", "okay", 5);
+	else if (hw_conf->uart1 == -1)
+		set_hw_property(working_fdt, "/serial@ff190000", "status", "disabled", 9);
+
+	if (hw_conf->uart2 == 1) {
+		set_hw_property(working_fdt, "/serial@ff690000", "status", "okay", 5);
+		flash_gpio(working_fdt, "/pinctrl/gpio_init_config/gpio-init", "rockchip,pins");
+	} else if (hw_conf->uart2 == -1)
+		set_hw_property(working_fdt, "/serial@ff690000", "status", "disabled", 9);
+
+	if (hw_conf->uart3 == 1)
+		set_hw_property(working_fdt, "/serial@ff1b0000", "status", "okay", 5);
+	else if (hw_conf->uart3 == -1)
+		set_hw_property(working_fdt, "/serial@ff1b0000", "status", "disabled", 9);
+
+	if (hw_conf->uart4 == 1)
+		set_hw_property(working_fdt, "/serial@ff1c0000", "status", "okay", 5);
+	else if (hw_conf->uart4 == -1)
+		set_hw_property(working_fdt, "/serial@ff1c0000", "status", "disabled", 9);
+
+	if (hw_conf->pcm_i2s == 1)
+		set_hw_property(working_fdt, "/i2s@ff890000", "status", "okay", 5);
+	else if (hw_conf->pcm_i2s == -1)
+		set_hw_property(working_fdt, "/i2s@ff890000", "status", "disabled", 9);
+}
+
 static char andr_tmp_str[ANDR_BOOT_ARGS_SIZE + 1];
 static u32 android_kernel_comp_type = IH_COMP_NONE;
 
@@ -151,6 +785,10 @@ int android_image_get_kernel(const struct andr_img_hdr *hdr, int verify,
 		len += strlen(hdr->cmdline);
 	}
 
+	char *rootmmc0 = "root=/dev/mmcblk0p8"; /* SDcard Boot */
+	char *rootmmc1 = "root=/dev/mmcblk1p8"; /* eMMC Boot */
+	len += strlen(rootmmc0);
+
 	char *bootargs = env_get("bootargs");
 	if (bootargs)
 		len += strlen(bootargs);
@@ -168,6 +806,12 @@ int android_image_get_kernel(const struct andr_img_hdr *hdr, int verify,
 	}
 	if (*hdr->cmdline)
 		strcat(newbootargs, hdr->cmdline);
+
+	char *devnum = env_get("devnum");
+	if (!strcmp(devnum, "0"))
+		strcat(newbootargs, rootmmc1);
+	else if (!strcmp(devnum, "1"))
+		strcat(newbootargs, rootmmc0);
 
 	env_set("bootargs", newbootargs);
 
@@ -417,6 +1061,31 @@ static int android_image_separate(struct andr_img_hdr *hdr,
 {
 	ulong bstart;
 
+	struct fdt_header *working_fdt;
+        struct hw_config hw_conf;
+        memset(&hw_conf, 0, sizeof(struct hw_config));
+        parse_hw_config(&hw_conf);
+
+	printf("config.txt valid = %d\n", hw_conf.valid);
+	if (hw_conf.valid == 1) {
+		printf("config on: 1, config off: -1, no config: 0\n");
+		printf("intf.i2c1 = %d\n", hw_conf.i2c1);
+		printf("intf.i2c4 = %d\n", hw_conf.i2c4);
+		printf("intf.spi0 = %d\n", hw_conf.spi0);
+		printf("intf.spi2 = %d\n", hw_conf.spi2);
+		printf("intf.pwm2 = %d\n", hw_conf.pwm2);
+		printf("intf.pwm3 = %d\n", hw_conf.pwm3);
+		printf("intf.pcm = %d\n", hw_conf.pcm);
+		printf("intf.pcm_i2s = %d\n", hw_conf.pcm_i2s);
+		printf("intf.uart1 = %d\n", hw_conf.uart1);
+		printf("intf.uart2 = %d\n", hw_conf.uart2);
+		printf("intf.uart3 = %d\n", hw_conf.uart3);
+		printf("intf.uart4 = %d\n", hw_conf.uart4);
+
+		for (int i = 0; i < hw_conf.overlay_count; i++)
+			printf("get overlay name: %s\n", hw_conf.overlay_file[i]);
+	}
+
 	if (android_image_check_header(hdr)) {
 		printf("Bad android image header\n");
 		return -EINVAL;
@@ -504,6 +1173,12 @@ static int android_image_separate(struct andr_img_hdr *hdr,
 
 	/* 2. Disable fdt/ramdisk relocation, it saves boot time */
 	env_set("bootm-no-reloc", "y");
+
+	working_fdt = resize_working_fdt();
+        if (working_fdt != NULL) {
+                if(hw_conf.valid)
+                        handle_hw_conf(NULL, working_fdt, &hw_conf);
+        }
 
 	return 0;
 }
