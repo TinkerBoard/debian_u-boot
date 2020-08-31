@@ -108,7 +108,7 @@ static int ums_init(const char *devtype, const char *devnums_part_str)
 		name = malloc(UMS_NAME_LEN);
 		if (!name)
 			goto cleanup;
-		snprintf(name, UMS_NAME_LEN, "UMS disk %d", ums_count);
+		snprintf(name, UMS_NAME_LEN, "Tinker UMS");
 		ums[ums_count].name = name;
 		ums[ums_count].block_dev = *block_dev;
 
