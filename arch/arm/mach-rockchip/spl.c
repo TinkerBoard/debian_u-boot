@@ -16,6 +16,7 @@
 #ifdef CONFIG_ROCKCHIP_PRELOADER_ATAGS
 #include <asm/arch/rk_atags.h>
 #endif
+#include <asm/arch/gpio.h>
 #include <asm/arch/sdram.h>
 #include <asm/arch/boot_mode.h>
 #include <asm/arch-rockchip/sys_proto.h>
@@ -145,6 +146,25 @@ void *memset(void *s, int c, size_t count)
 }
 #endif
 
+/*
+*
+* usb current limit : GPIO6_A6 (H:unlock, L:lock)
+*
+*/
+void usb_current_limit_ctrl(bool unlock_current)
+{
+	int tmp;
+
+	tmp = readl(RKIO_GPIO6_PHYS + GPIO_SWPORT_DR);
+	if(unlock_current == true)
+		writel(tmp | 0x40, RKIO_GPIO6_PHYS + GPIO_SWPORT_DR);
+	else
+		writel(tmp & ~0x40, RKIO_GPIO6_PHYS + GPIO_SWPORT_DR);
+
+	tmp = readl(RKIO_GPIO6_PHYS + GPIO_SWPORT_DDR);
+	writel(tmp | 0x40, RKIO_GPIO6_PHYS + GPIO_SWPORT_DDR);
+}
+
 void board_init_f(ulong dummy)
 {
 #ifdef CONFIG_SPL_FRAMEWORK
@@ -168,6 +188,7 @@ void board_init_f(ulong dummy)
 	debug_uart_init();
 	printascii("U-Boot SPL board init");
 #endif
+	usb_current_limit_ctrl(true);
 
 #ifdef CONFIG_SPL_FRAMEWORK
 	ret = spl_early_init();

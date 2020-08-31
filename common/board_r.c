@@ -935,6 +935,7 @@ static init_fnc_t init_sequence_r[] = {
 #ifdef CONFIG_MTD_BLK
 	initr_mtd_blk,
 #endif
+	check_force_enter_ums_mode,
 #ifdef CONFIG_MMC
 	initr_mmc,
 #endif

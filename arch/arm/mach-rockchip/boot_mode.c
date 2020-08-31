@@ -9,8 +9,22 @@
 #include <malloc.h>
 #include <asm/io.h>
 #include <asm/arch/boot_mode.h>
+#include <asm/arch-rockchip/gpio.h>
 
 DECLARE_GLOBAL_DATA_PTR;
+
+enum project_id {
+	TinkerBoardS = 0,
+	TinkerBoard  = 7,
+};
+
+enum pcb_id {
+	SR,
+	ER,
+	PR,
+};
+
+extern bool force_ums;
 
 /*
  * Generally, we have 3 ways to get reboot mode:
@@ -190,5 +204,102 @@ int setup_boot_mode(void)
 		break;
 	}
 
+	return 0;
+}
+
+/*
+*
+* usb current limit : GPIO6_A6 (H:unlock, L:lock)
+*
+*/
+void usb_current_limit_ctrl(bool unlock_current)
+{
+	int tmp;
+
+	tmp = readl(RKIO_GPIO6_PHYS + GPIO_SWPORT_DR);
+	if(unlock_current == true)
+		writel(tmp | 0x40, RKIO_GPIO6_PHYS + GPIO_SWPORT_DR);
+	else
+		writel(tmp & ~0x40, RKIO_GPIO6_PHYS + GPIO_SWPORT_DR);
+
+	tmp = readl(RKIO_GPIO6_PHYS + GPIO_SWPORT_DDR);
+	writel(tmp | 0x40, RKIO_GPIO6_PHYS + GPIO_SWPORT_DDR);
+}
+
+
+/*
+*
+* eMMC maskrom mode : GPIO6_A7 (H:disable maskrom, L:enable maskrom)
+*
+*/
+void rk3288_maskrom_ctrl(bool enable_emmc)
+{
+	int tmp;
+
+	tmp = readl(RKIO_GPIO6_PHYS + GPIO_SWPORT_DR);
+	if(enable_emmc == true)
+		writel(tmp | 0x80, RKIO_GPIO6_PHYS + GPIO_SWPORT_DR);
+	else
+		writel(tmp & ~0x80, RKIO_GPIO6_PHYS + GPIO_SWPORT_DR);
+
+	tmp = readl(RKIO_GPIO6_PHYS + GPIO_SWPORT_DDR);
+	writel(tmp | 0x80, RKIO_GPIO6_PHYS + GPIO_SWPORT_DDR);
+	mdelay(10);
+}
+
+/*
+*
+* project id        : GPIO2_A3 GPIO2_A2 GPIO2_A1
+* pcb id            : GPIO2_B2 GPIO2_B1 GPIO2_B0
+* SDP/CDP           : GPIO6_A5 (H:SDP, L:CDP)
+* usb current limit : GPIO6_A6 (H:unlock, L:lock)
+* eMMC maskrom mode : GPIO6_A7 (H:disable maskrom, L:enable maskrom)
+*
+* Please check TRM V1.2 part1 page 152 for the following register settings
+*
+*/
+int check_force_enter_ums_mode(void)
+{
+	int tmp;
+	enum pcb_id pcbid;
+	enum project_id projectid;
+
+	// GPIO2_A3/GPIO2_A2/GPIO2_A1 pull up enable
+	tmp = readl(RKIO_GRF_PHYS + GRF_GPIO2A_P);
+	writel((tmp&~(0x03F<<2)) | 0x3F<<(16 + 2) | 0x15<<2, RKIO_GRF_PHYS + GRF_GPIO2A_P);
+
+	// GPIO2_A3/GPIO2_A2/GPIO2_A1/GPIO2_B2/GPIO2_B1/GPIO2_B0 set to input
+	tmp = readl(RKIO_GPIO2_PHYS + GPIO_SWPORT_DDR);
+	writel(tmp & ~(0x70E), RKIO_GPIO2_PHYS + GPIO_SWPORT_DDR);
+
+	// GPIO6_A5 pull up/down disable
+	tmp = readl(RKIO_GRF_PHYS + GRF_GPIO6A_P);
+	writel((tmp&~(0x03<<10)) | 0x03<<(16 + 10), RKIO_GRF_PHYS + GRF_GPIO6A_P);
+
+	// GPIO6_A5 set to input
+	tmp = readl(RKIO_GPIO6_PHYS + GPIO_SWPORT_DDR);
+	writel(tmp & ~(0x20), RKIO_GPIO6_PHYS + GPIO_SWPORT_DDR);
+
+	mdelay(10);
+
+	// read GPIO2_A3/GPIO2_A2/GPIO2_A1 value
+	projectid = (readl(RKIO_GPIO2_PHYS + GPIO_EXT_PORT) & 0x0E) >>1;
+
+	// read GPIO2_B2/GPIO2_B1/GPIO2_B0 value
+	pcbid = (readl(RKIO_GPIO2_PHYS + GPIO_EXT_PORT) & 0x700) >> 8;
+
+	// only Tinker Board S and the PR stage PCB has this function
+	if(projectid!=TinkerBoard && pcbid >= ER){
+		printf("PC event = 0x%x\n", readl(RKIO_GPIO6_PHYS + GPIO_EXT_PORT)&0x20);
+		if((readl(RKIO_GPIO6_PHYS + GPIO_EXT_PORT)&0x20)==0x20) {
+			// SDP detected, enable EMMC and unlock usb current limit
+			printf("usb connected to SDP, force enter ums mode\n");
+			force_ums = true;
+			rk3288_maskrom_ctrl(true);
+			usb_current_limit_ctrl(true);
+		} else {
+			usb_current_limit_ctrl(false);
+		}
+	}
 	return 0;
 }
