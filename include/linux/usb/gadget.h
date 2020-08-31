@@ -25,6 +25,9 @@
 
 struct usb_ep;
 
+extern bool force_ums;
+extern bool getdescriptor;
+
 /**
  * struct usb_request - describes one i/o request
  * @buf: Buffer used for data.  Always provide this; some controllers

@@ -216,6 +216,7 @@ void usb_current_limit_ctrl(bool unlock_current)
 {
 	int tmp;
 
+	printf("%s: unlock_current = %d\n", __func__, unlock_current);
 	tmp = readl(RKIO_GPIO6_PHYS + GPIO_SWPORT_DR);
 	if(unlock_current == true)
 		writel(tmp | 0x40, RKIO_GPIO6_PHYS + GPIO_SWPORT_DR);
@@ -236,6 +237,7 @@ void rk3288_maskrom_ctrl(bool enable_emmc)
 {
 	int tmp;
 
+	printf("%s: enable_emmc = %d\n", __func__, enable_emmc);
 	tmp = readl(RKIO_GPIO6_PHYS + GPIO_SWPORT_DR);
 	if(enable_emmc == true)
 		writel(tmp | 0x80, RKIO_GPIO6_PHYS + GPIO_SWPORT_DR);

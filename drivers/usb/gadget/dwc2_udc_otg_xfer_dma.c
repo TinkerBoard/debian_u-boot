@@ -1390,6 +1390,7 @@ static void dwc2_ep0_setup(struct dwc2_udc *dev)
 			debug_cond(DEBUG_SETUP != 0,
 				   "%s: *** USB_REQ_GET_DESCRIPTOR\n",
 				   __func__);
+			getdescriptor = true;
 			break;
 
 		case USB_REQ_SET_INTERFACE:

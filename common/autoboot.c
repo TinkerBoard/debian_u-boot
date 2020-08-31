@@ -29,6 +29,7 @@ DECLARE_GLOBAL_DATA_PTR;
 static int stored_bootdelay;
 
 bool force_ums = false;
+bool getdescriptor = false;
 
 #if defined(CONFIG_AUTOBOOT_KEYED)
 #if defined(CONFIG_AUTOBOOT_STOP_STR_SHA256)
@@ -358,8 +359,11 @@ void autoboot_command(const char *s)
 		local_args[1]=str2;
 		local_args[2]=str3;
 		local_args[3]=str4;
-		do_usb_mass_storage(NULL, 0, 4, local_args);
-		return;
+
+		if (do_usb_mass_storage(NULL, 0, 4, local_args) == -ETIMEDOUT) {
+			rk3288_maskrom_ctrl(false);
+			usb_current_limit_ctrl(false);
+		}
 	}
 
 	if (stored_bootdelay != -1 && s && !abortboot(stored_bootdelay)) {

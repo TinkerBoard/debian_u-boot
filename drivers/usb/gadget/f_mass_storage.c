@@ -649,7 +649,7 @@ static void busy_indicator(void)
 static int sleep_thread(struct fsg_common *common)
 {
 	int	rc = 0;
-	int i = 0, k = 0;
+	int i = 0, k = 0, j = 0;
 
 	/* Wait until a signal arrives or we are woken up */
 	for (;;) {
@@ -660,6 +660,7 @@ static int sleep_thread(struct fsg_common *common)
 			busy_indicator();
 			i = 0;
 			k++;
+			j++;
 		}
 
 		if (k == 10) {
@@ -672,6 +673,13 @@ static int sleep_thread(struct fsg_common *common)
 				return -EIO;
 
 			k = 0;
+		}
+
+		if (j == 300) {  //about 3 seconds
+			if(force_ums && !getdescriptor) {
+				printf("wait for usb get descriptor cmd timeout\n");
+				return -ETIMEDOUT;
+			}
 		}
 
 		usb_gadget_handle_interrupts(0);

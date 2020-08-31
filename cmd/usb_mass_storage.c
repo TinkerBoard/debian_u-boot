@@ -215,6 +215,9 @@ int do_usb_mass_storage(cmd_tbl_t *cmdtp, int flag,
 		usb_gadget_handle_interrupts(controller_index);
 
 		rc = fsg_main_thread(NULL);
+		if (rc == -ETIMEDOUT) {
+			goto cleanup_register;
+		}
 		if (rc) {
 			/* Check I/O error */
 			if (rc == -EIO)
