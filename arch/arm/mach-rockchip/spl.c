@@ -151,7 +151,7 @@ void *memset(void *s, int c, size_t count)
 * usb current limit : GPIO6_A6 (H:unlock, L:lock)
 *
 */
-void usb_current_limit_ctrl(bool unlock_current)
+void usb_current_limit_unlock(bool unlock_current)
 {
 	int tmp;
 
@@ -188,7 +188,7 @@ void board_init_f(ulong dummy)
 	debug_uart_init();
 	printascii("U-Boot SPL board init");
 #endif
-	usb_current_limit_ctrl(true);
+	usb_current_limit_unlock(true);
 
 #ifdef CONFIG_SPL_FRAMEWORK
 	ret = spl_early_init();

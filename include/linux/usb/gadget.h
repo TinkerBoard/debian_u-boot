@@ -25,7 +25,6 @@
 
 struct usb_ep;
 
-extern bool force_ums;
 extern bool getdescriptor;
 
 /**

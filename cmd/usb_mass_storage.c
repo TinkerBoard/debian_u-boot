@@ -133,7 +133,7 @@ cleanup:
 	return ret;
 }
 
-int do_usb_mass_storage(cmd_tbl_t *cmdtp, int flag,
+static int do_usb_mass_storage(cmd_tbl_t *cmdtp, int flag,
 			       int argc, char * const argv[])
 {
 	const char *usb_controller;
@@ -215,9 +215,6 @@ int do_usb_mass_storage(cmd_tbl_t *cmdtp, int flag,
 		usb_gadget_handle_interrupts(controller_index);
 
 		rc = fsg_main_thread(NULL);
-		if (rc == -ETIMEDOUT) {
-			goto cleanup_register;
-		}
 		if (rc) {
 			/* Check I/O error */
 			if (rc == -EIO)
@@ -226,6 +223,13 @@ int do_usb_mass_storage(cmd_tbl_t *cmdtp, int flag,
 			/* Check CTRL+C */
 			if (rc == -EPIPE)
 				printf("\rCTRL+C - Operation aborted\n");
+
+			/* Check usb connection timeout */
+			if (rc == -ETIMEDOUT)
+				printf("\rWaiting usb connection timeout, exit ums mode.\n");
+
+			rk3288_maskrom_disable(false);
+			usb_current_limit_unlock(false);
 
 			rc = CMD_RET_SUCCESS;
 			goto cleanup_register;

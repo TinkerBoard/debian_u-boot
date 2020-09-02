@@ -676,7 +676,7 @@ static int sleep_thread(struct fsg_common *common)
 		}
 
 		if (j == 300) {  //about 3 seconds
-			if(force_ums && !getdescriptor) {
+			if(!getdescriptor) {
 				printf("wait for usb get descriptor cmd timeout\n");
 				return -ETIMEDOUT;
 			}

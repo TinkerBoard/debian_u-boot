@@ -28,7 +28,6 @@ DECLARE_GLOBAL_DATA_PTR;
 /* Stored value of bootdelay, used by autoboot_command() */
 static int stored_bootdelay;
 
-bool force_ums = false;
 bool getdescriptor = false;
 
 #if defined(CONFIG_AUTOBOOT_KEYED)
@@ -344,27 +343,9 @@ const char *bootdelay_process(void)
 	return s;
 }
 
-extern int do_usb_mass_storage(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[]);
-
 void autoboot_command(const char *s)
 {
 	debug("### main_loop: bootcmd=\"%s\"\n", s ? s : "<UNDEFINED>");
-
-	if (force_ums) {
-		// force to enter ums mode
-		char *local_args[4];
-		char str1[]="ums", str2[]="1", str3[]="mmc", str4[]="0";
-
-		local_args[0]=str1;
-		local_args[1]=str2;
-		local_args[2]=str3;
-		local_args[3]=str4;
-
-		if (do_usb_mass_storage(NULL, 0, 4, local_args) == -ETIMEDOUT) {
-			rk3288_maskrom_ctrl(false);
-			usb_current_limit_ctrl(false);
-		}
-	}
 
 	if (stored_bootdelay != -1 && s && !abortboot(stored_bootdelay)) {
 #if defined(CONFIG_AUTOBOOT_KEYED) && !defined(CONFIG_AUTOBOOT_KEYED_CTRLC)
