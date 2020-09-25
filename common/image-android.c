@@ -230,6 +230,54 @@ invalid_line:
 	return i;
 }
 
+static unsigned long get_append(char *text)
+{
+	int i = 0;
+	int append_len = 0;
+
+	while(*(text + i) != 0x00)
+	{
+		if(*(text + i) == 0x0a) {
+			append_len = i;
+			i++;
+			break;
+		} else
+			i++;
+	}
+
+	if (append_len) {
+		int len = 0;
+		char *append;
+
+		char *bootargs = env_get("bootargs");
+		if (bootargs)
+			len += strlen(bootargs);
+
+		append = (char*)calloc(append_len, sizeof(char));
+		memcpy(append, text, append_len);
+
+		len += append_len;
+
+		char *newbootargs = malloc(len + 2);
+		*newbootargs = '\0';
+
+		if (bootargs) {
+			strcpy(newbootargs, bootargs);
+			strcat(newbootargs, " ");
+		}
+
+		strcat(newbootargs, append);
+		printf("get append cmdline: %s\n", append);
+
+		env_set("bootargs", newbootargs);
+
+		free(append);
+		free(newbootargs);
+	}
+
+	return i;
+}
+
 static int set_file_conf(char *text, struct hw_config *hw_conf, int start_point, int file_ptr)
 {
 	char *ptr;
@@ -313,6 +361,85 @@ static unsigned long hw_parse_property(char *text, struct hw_config *hw_conf)
 		}
 	}
 	return i;
+}
+
+static void parse_cmdline(void)
+{
+	unsigned long count, offset = 0, addr, size;
+	char *file_addr, *devnum;
+	static char *fs_argv[5];
+
+	int valid = 0;
+
+	devnum = env_get("devnum");
+	if (!devnum) {
+		printf("Can't get devnum\n");
+		goto end;
+	}
+
+	file_addr = env_get("cmdline_addr");
+	if (!file_addr) {
+		printf("Can't get cmdline_addr address\n");
+		goto end;
+	}
+
+	addr = simple_strtoul(file_addr, NULL, 16);
+	if (!addr)
+		printf("Can't set addr\n");
+
+	fs_argv[0] = "ext2load";
+	fs_argv[1] = "mmc";
+
+	if (!strcmp(devnum, "0"))
+		fs_argv[2] = "0:7";
+	else if (!strcmp(devnum, "1"))
+		fs_argv[2] = "1:7";
+	else {
+		printf("Invalid devnum\n");
+		goto end;
+	}
+
+	fs_argv[3] = file_addr;
+	fs_argv[4] = "cmdline.txt";
+
+	if (do_ext2load(NULL, 0, 5, fs_argv)) {
+		printf("[cmdline] do_ext2load fail\n");
+		goto end;
+	}
+
+	size = env_get_ulong("filesize", 16, 0);
+	if (!size) {
+		printf("[cmdline] Can't get filesize\n");
+		goto end;
+	}
+
+	valid = 1;
+
+	printf("cmdline.txt size = %lu\n", size);
+
+	*((char *)file_addr + size) = 0x00;
+
+	while(offset != size)
+	{
+		count = hw_skip_comment((char *)(addr + offset));
+		if(count > 0) {
+			offset = offset + count;
+			continue;
+		}
+		count = hw_skip_line((char *)(addr + offset));
+		if(count > 0) {
+			offset = offset + count;
+			continue;
+		}
+		count = get_append((char *)(addr + offset));
+		if(count > 0) {
+			offset = offset + count;
+			continue;
+		}
+	}
+
+end:
+	printf("cmdline.txt valid = %d\n", valid);
 }
 
 static void parse_hw_config(struct hw_config *hw_conf)
@@ -793,7 +920,7 @@ int android_image_get_kernel(const struct andr_img_hdr *hdr, int verify,
 	if (bootargs)
 		len += strlen(bootargs);
 
-	char *newbootargs = malloc(len + 2);
+	char *newbootargs = malloc(len + 3);
 	if (!newbootargs) {
 		puts("Error: malloc in android_image_get_kernel failed!\n");
 		return -ENOMEM;
@@ -804,8 +931,10 @@ int android_image_get_kernel(const struct andr_img_hdr *hdr, int verify,
 		strcpy(newbootargs, bootargs);
 		strcat(newbootargs, " ");
 	}
-	if (*hdr->cmdline)
+	if (*hdr->cmdline) {
 		strcat(newbootargs, hdr->cmdline);
+		strcat(newbootargs, " ");
+	}
 
 	char *devnum = env_get("devnum");
 	if (!strcmp(devnum, "0"))
@@ -1060,6 +1189,8 @@ static int android_image_separate(struct andr_img_hdr *hdr,
 				  void *ram_base)
 {
 	ulong bstart;
+
+	parse_cmdline();
 
 	struct fdt_header *working_fdt;
         struct hw_config hw_conf;
