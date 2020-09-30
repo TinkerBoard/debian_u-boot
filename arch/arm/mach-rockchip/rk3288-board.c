@@ -27,6 +27,8 @@ DECLARE_GLOBAL_DATA_PTR;
 
 enum project_id {
 	TinkerBoardS = 0,
+	TinkerBoardS_HV = 1,
+	TinkerBoardR_BR = 4,
 	TinkerBoard  = 7,
 };
 
@@ -174,8 +176,9 @@ int check_force_enter_ums_mode(void)
 	// read GPIO2_B2/GPIO2_B1/GPIO2_B0 value
 	pcbid = (readl(RKIO_GPIO2_PHYS + GPIO_EXT_PORT) & 0x700) >> 8;
 
-	// only Tinker Board S and the PR stage PCB has this function
-	if(projectid!=TinkerBoard && pcbid >= ER){
+	// only TinkerBoard S PR stage PCB & TinkerBoard S/HV has this function
+	if(((projectid == TinkerBoardS) && (pcbid >= ER))
+	   || (projectid == TinkerBoardS_HV)){
 		printf("PC event = 0x%x\n", readl(RKIO_GPIO6_PHYS + GPIO_EXT_PORT)&0x20);
 		if((readl(RKIO_GPIO6_PHYS + GPIO_EXT_PORT)&0x20)==0x20) {
 			// SDP detected, enable EMMC and unlock usb current limit
