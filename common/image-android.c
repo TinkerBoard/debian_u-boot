@@ -78,7 +78,7 @@ static unsigned long get_intf_value(char *text, struct hw_config *hw_conf)
 		i = 13;
 		if (memcmp(text + i, "on", 2) == 0) {
 			hw_conf->fiq_debugger = 1;
-			hw_conf->uart1 = -1;
+			hw_conf->uart3 = -1;
 			i = i + 2;
 		} else if (memcmp(text + i, "off", 3) == 0) {
 			hw_conf->fiq_debugger = -1;
@@ -171,8 +171,7 @@ static unsigned long get_intf_value(char *text, struct hw_config *hw_conf)
 	} else if (memcmp(text, "uart1=", 6) == 0) {
 		i = 6;
 		if (memcmp(text + i, "on", 2) == 0) {
-			if (hw_conf->fiq_debugger != 1)
-				hw_conf->uart1 = 1;
+			hw_conf->uart1 = 1;
 			i = i + 2;
 		} else if (memcmp(text + i, "off", 3) == 0) {
 			hw_conf->uart1 = -1;
@@ -193,7 +192,8 @@ static unsigned long get_intf_value(char *text, struct hw_config *hw_conf)
 	} else if (memcmp(text, "uart3=", 6) == 0) {
 		i = 6;
 		if (memcmp(text + i, "on", 2) == 0) {
-			hw_conf->uart3 = 1;
+			if (hw_conf->fiq_debugger != 1)
+				hw_conf->uart3 = 1;
 			i = i + 2;
 		} else if (memcmp(text + i, "off", 3) == 0) {
 			hw_conf->uart3 = -1;
