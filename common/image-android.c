@@ -109,8 +109,8 @@ static unsigned long get_intf_value(char *text, struct hw_config *hw_conf)
 	} else if (memcmp(text, "spi0=", 5) == 0) {
 		i = 5;
 		if (memcmp(text + i, "on", 2) == 0) {
-			if (hw_conf->spi0 != -1)
-				hw_conf->spi0 = 1;
+			hw_conf->spi0 = 1;
+			hw_conf->uart4 = -1;
 			i = i + 2;
 		} else if (memcmp(text + i, "off", 3) == 0) {
 			hw_conf->spi0 = -1;
@@ -182,8 +182,9 @@ static unsigned long get_intf_value(char *text, struct hw_config *hw_conf)
 	} else if (memcmp(text, "uart2=", 6) == 0) {
 		i = 6;
 		if (memcmp(text + i, "on", 2) == 0) {
-			if (hw_conf->uart2 != -1)
-				hw_conf->uart2 = 1;
+			hw_conf->uart2 = 1;
+			hw_conf->pwm2 = -1;
+			hw_conf->pwm3 = -1;
 			i = i + 2;
 		} else if (memcmp(text + i, "off", 3) == 0) {
 			hw_conf->uart2 = -1;
