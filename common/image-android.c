@@ -656,7 +656,7 @@ static int merge_dts_overlay(cmd_tbl_t *cmdtp, struct fdt_header *working_fdt, c
 	char *file_addr, *devnum;
 	struct fdt_header *blob;
 	int ret;
-	char overlay_file[] = "overlays/";
+	char overlay_file[MAX_OVERLAY_NAME_LENGTH] = "overlays/";
 
 	static char *fs_argv[5];
 
@@ -1296,6 +1296,7 @@ static int android_image_separate(struct andr_img_hdr *hdr,
 	printf("config.txt valid = %d\n", hw_conf.valid);
 	if (hw_conf.valid == 1) {
 		printf("config on: 1, config off: -1, no config: 0\n");
+		printf("intf.fiq_debugger = %d\n", hw_conf.fiq_debugger);
 		printf("intf.i2c1 = %d\n", hw_conf.i2c1);
 		printf("intf.i2c4 = %d\n", hw_conf.i2c4);
 		printf("intf.spi0 = %d\n", hw_conf.spi0);
