@@ -540,7 +540,12 @@ static int set_hw_property(struct fdt_header *working_fdt, char *path, char *pro
 	return 0;
 }
 
-static int flash_gpio(struct fdt_header *working_fdt, char *path, char *property)
+/*
+ * for uart2 flash: func = 0
+ * for pwm2 flash: func = 2
+ * for pwm3 flash: func = 3
+ */
+static int flash_gpio(struct fdt_header *working_fdt, char *path, char *property, int func)
 {
 	int offset, len;;
 	const fdt32_t *cell;
@@ -567,8 +572,15 @@ static int flash_gpio(struct fdt_header *working_fdt, char *path, char *property
 		int get_pin22, get_pin23;
 
 		for (i = 0; i < len; i++) {
-			get_pin22 = 1;
-			get_pin23 = 1;
+			if (func == 3)	/* for pwm3, do not flash pin22 */
+				get_pin22 = 0;
+			else
+				get_pin22 = 1;
+
+			if (func == 2)	/* for pwm2, do not flash pin23 */
+				get_pin23 = 0;
+			else
+				get_pin23 = 1;
 
 			for (j = 0; j < 3; j++) {
 				if (fdt32_to_cpu(cell[i + j]) != pin22[j])
@@ -760,14 +772,16 @@ static void handle_hw_conf(cmd_tbl_t *cmdtp, struct fdt_header *working_fdt, str
 	else if (hw_conf->spi2 == -1)
 		set_hw_property(working_fdt, "/spi@ff130000", "status", "disabled", 9);
 
-	if (hw_conf->pwm2 == 1)
+	if (hw_conf->pwm2 == 1) {
 		set_hw_property(working_fdt, "/pwm@ff680020", "status", "okay", 5);
-	else if (hw_conf->pwm2 == -1)
+		flash_gpio(working_fdt, "/pinctrl/gpio_init_config/gpio-init", "rockchip,pins", 2);
+	} else if (hw_conf->pwm2 == -1)
 		set_hw_property(working_fdt, "/pwm@ff680020", "status", "disabled", 9);
 
-	if (hw_conf->pwm3 == 1)
+	if (hw_conf->pwm3 == 1) {
 		set_hw_property(working_fdt, "/pwm@ff680030", "status", "okay", 5);
-	else if (hw_conf->pwm3 == -1)
+		flash_gpio(working_fdt, "/pinctrl/gpio_init_config/gpio-init", "rockchip,pins", 3);
+	} else if (hw_conf->pwm3 == -1)
 		set_hw_property(working_fdt, "/pwm@ff680030", "status", "disabled", 9);
 
 	if (hw_conf->uart1 == 1)
@@ -777,7 +791,7 @@ static void handle_hw_conf(cmd_tbl_t *cmdtp, struct fdt_header *working_fdt, str
 
 	if (hw_conf->uart2 == 1) {
 		set_hw_property(working_fdt, "/serial@ff690000", "status", "okay", 5);
-		flash_gpio(working_fdt, "/pinctrl/gpio_init_config/gpio-init", "rockchip,pins");
+		flash_gpio(working_fdt, "/pinctrl/gpio_init_config/gpio-init", "rockchip,pins", 0);
 	} else if (hw_conf->uart2 == -1)
 		set_hw_property(working_fdt, "/serial@ff690000", "status", "disabled", 9);
 
