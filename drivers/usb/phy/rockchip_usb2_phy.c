@@ -85,6 +85,12 @@ void otg_phy_init(struct dwc2_udc *dev)
 		return;
 	}
 	pdata->priv = phy_cfg;
+
+	/* set otg reg to default value */
+	writel(0xffff0089, 0xff770320);
+	writel(0xffff0d08, 0xff770328);
+	writel(0xffff0001, 0xff77032c);
+
 	/* disable software control */
 	property_enable(pdata, &phy_cfg->soft_con, false);
 
