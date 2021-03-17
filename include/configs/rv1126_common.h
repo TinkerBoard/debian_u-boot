@@ -36,6 +36,11 @@
 #define GICD_BASE			0xfeff1000
 #define GICC_BASE			0xfeff2000
 
+/* secure boot otp rollback */
+#define OTP_UBOOT_ROLLBACK_OFFSET	0x1A	/* word address */
+#define OTP_UBOOT_ROLLBACK_WORDS	2	/* 64 bits, 2 words */
+#define OTP_ALL_ONES_NUM_BITS		32
+
 /* MMC/SD IP block */
 #define CONFIG_BOUNCE_BUFFER
 
@@ -49,6 +54,9 @@
 
 #define CONFIG_SYS_SDRAM_BASE		0
 #define SDRAM_MAX_SIZE			0xfd000000
+
+#define PERIPH_DEVICE_START_ADDR	(CONFIG_SYS_SDRAM_BASE + SDRAM_MAX_SIZE)
+#define PERIPH_DEVICE_END_ADDR		SZ_4G
 
 #define CONFIG_SYS_NONCACHED_MEMORY    (1 << 20)       /* 1 MiB */
 #ifndef CONFIG_SPL_BUILD
@@ -80,7 +88,6 @@
 #else
 #define RKIMG_BOOTCOMMAND		\
 	"boot_fit;"			\
-	"boot_uimage;"			\
 	"boot_android ${devtype} ${devnum};"
 #endif
 #endif

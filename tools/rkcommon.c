@@ -73,11 +73,12 @@ static struct spl_info spl_infos[] = {
 	{ "rk322x", "RK32", 0x8000 - 0x1000, false },
 	{ "rk3288", "RK32", 0x8000, false },
 	{ "rk3308", "RK33", 0x40000 - 0x1000, false},
-	{ "rk3328", "RK32", 0x8000 - 0x1000, false },
+	{ "rk3328", "RK32", 0x8000 - 0x800, false },
 	{ "rk3368", "RK33", 0x8000 - 0x1000, false },
 	{ "rk3399", "RK33", 0x30000 - 0x2000, false },
 	{ "px30", "RK33", 0x2800, false },
 	{ "rv1108", "RK11", 0x1800, false },
+	{ "rv1126", "110B", 0x10000 - 0x1000, false},
 	{ "rk1808", "RK18", 0x200000 - 0x2000, false},
 };
 

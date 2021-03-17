@@ -69,7 +69,7 @@ struct dram_info dram_info;
 
 #if (CONFIG_ROCKCHIP_TPL_INIT_DRAM_TYPE == 3)
 struct rv1126_sdram_params sdram_configs[] = {
-	#include "sdram_inc/rv1126/sdram-rv1126-ddr3-detect-330.inc"
+	#include "sdram_inc/rv1126/sdram-rv1126-ddr3-detect-328.inc"
 	#include "sdram_inc/rv1126/sdram-rv1126-ddr3-detect-396.inc"
 	#include "sdram_inc/rv1126/sdram-rv1126-ddr3-detect-528.inc"
 	#include "sdram_inc/rv1126/sdram-rv1126-ddr3-detect-664.inc"
@@ -79,7 +79,7 @@ struct rv1126_sdram_params sdram_configs[] = {
 };
 #elif (CONFIG_ROCKCHIP_TPL_INIT_DRAM_TYPE == 0)
 struct rv1126_sdram_params sdram_configs[] = {
-	#include "sdram_inc/rv1126/sdram-rv1126-ddr4-detect-330.inc"
+	#include "sdram_inc/rv1126/sdram-rv1126-ddr4-detect-328.inc"
 	#include "sdram_inc/rv1126/sdram-rv1126-ddr4-detect-396.inc"
 	#include "sdram_inc/rv1126/sdram-rv1126-ddr4-detect-528.inc"
 	#include "sdram_inc/rv1126/sdram-rv1126-ddr4-detect-664.inc"
@@ -89,7 +89,7 @@ struct rv1126_sdram_params sdram_configs[] = {
 };
 #elif (CONFIG_ROCKCHIP_TPL_INIT_DRAM_TYPE == 6)
 struct rv1126_sdram_params sdram_configs[] = {
-	#include "sdram_inc/rv1126/sdram-rv1126-lpddr3-detect-330.inc"
+	#include "sdram_inc/rv1126/sdram-rv1126-lpddr3-detect-328.inc"
 	#include "sdram_inc/rv1126/sdram-rv1126-lpddr3-detect-396.inc"
 	#include "sdram_inc/rv1126/sdram-rv1126-lpddr3-detect-528.inc"
 	#include "sdram_inc/rv1126/sdram-rv1126-lpddr3-detect-664.inc"
@@ -99,7 +99,7 @@ struct rv1126_sdram_params sdram_configs[] = {
 };
 #elif (CONFIG_ROCKCHIP_TPL_INIT_DRAM_TYPE == 7)
 struct rv1126_sdram_params sdram_configs[] = {
-	#include "sdram_inc/rv1126/sdram-rv1126-lpddr4-detect-330.inc"
+	#include "sdram_inc/rv1126/sdram-rv1126-lpddr4-detect-328.inc"
 	#include "sdram_inc/rv1126/sdram-rv1126-lpddr4-detect-396.inc"
 	#include "sdram_inc/rv1126/sdram-rv1126-lpddr4-detect-528.inc"
 	#include "sdram_inc/rv1126/sdram-rv1126-lpddr4-detect-664.inc"
@@ -117,7 +117,7 @@ static struct rv1126_fsp_param fsp_param[MAX_IDX];
 
 static u8 lp3_odt_value;
 
-static u8 wrlvl_result[2][4];
+static s8 wrlvl_result[2][4];
 
 /* DDR configuration 0-9 */
 u16 ddr_cfg_2_rbc[] = {
@@ -346,16 +346,6 @@ static void rkclk_configure_ddr(struct dram_info *dram,
 	rkclk_set_dpll(dram, sdram_params->base.ddr_freq * MHZ / 2);
 }
 
-static void phy_soft_reset(struct dram_info *dram)
-{
-	void __iomem *phy_base = dram->phy;
-
-	clrbits_le32(PHY_REG(phy_base, 0), 0x3 << 2);
-	udelay(1);
-	setbits_le32(PHY_REG(phy_base, 0), ANALOG_DERESET | DIGITAL_DERESET);
-	udelay(1);
-}
-
 static unsigned int
 	calculate_ddrconfig(struct rv1126_sdram_params *sdram_params)
 {
@@ -553,21 +543,19 @@ static void phy_pll_set(struct dram_info *dram, u32 freq, u32 wait)
 }
 
 static const u16 d3_phy_drv_2_ohm[][2] = {
-	{PHY_DDR3_RON_506ohm, 506},
-	{PHY_DDR3_RON_253ohm, 253},
-	{PHY_DDR3_RON_169hm, 169},
-	{PHY_DDR3_RON_127ohm, 127},
-	{PHY_DDR3_RON_101ohm, 101},
-	{PHY_DDR3_RON_84ohm, 84},
-	{PHY_DDR3_RON_72ohm, 72},
-	{PHY_DDR3_RON_63ohm, 63},
-	{PHY_DDR3_RON_56ohm, 56},
+	{PHY_DDR3_RON_455ohm, 455},
+	{PHY_DDR3_RON_230ohm, 230},
+	{PHY_DDR3_RON_153ohm, 153},
+	{PHY_DDR3_RON_115ohm, 115},
+	{PHY_DDR3_RON_91ohm, 91},
+	{PHY_DDR3_RON_76ohm, 76},
+	{PHY_DDR3_RON_65ohm, 65},
+	{PHY_DDR3_RON_57ohm, 57},
 	{PHY_DDR3_RON_51ohm, 51},
 	{PHY_DDR3_RON_46ohm, 46},
-	{PHY_DDR3_RON_42ohm, 42},
-	{PHY_DDR3_RON_39ohm, 39},
-	{PHY_DDR3_RON_36ohm, 36},
-	{PHY_DDR3_RON_34ohm, 34},
+	{PHY_DDR3_RON_41ohm, 41},
+	{PHY_DDR3_RON_38ohm, 38},
+	{PHY_DDR3_RON_35ohm, 35},
 	{PHY_DDR3_RON_32ohm, 32},
 	{PHY_DDR3_RON_30ohm, 30},
 	{PHY_DDR3_RON_28ohm, 28},
@@ -575,140 +563,142 @@ static const u16 d3_phy_drv_2_ohm[][2] = {
 	{PHY_DDR3_RON_25ohm, 25},
 	{PHY_DDR3_RON_24ohm, 24},
 	{PHY_DDR3_RON_23ohm, 23},
-	{PHY_DDR3_RON_22ohm, 22}
+	{PHY_DDR3_RON_22ohm, 22},
+	{PHY_DDR3_RON_21ohm, 21},
+	{PHY_DDR3_RON_20ohm, 20}
 };
 
 static u16 d3_phy_odt_2_ohm[][2] = {
 	{PHY_DDR3_RTT_DISABLE, 0},
-	{PHY_DDR3_RTT_953ohm, 953},
-	{PHY_DDR3_RTT_483ohm, 483},
-	{PHY_DDR3_RTT_320ohm, 320},
-	{PHY_DDR3_RTT_241ohm, 241},
-	{PHY_DDR3_RTT_193ohm, 193},
-	{PHY_DDR3_RTT_161ohm, 161},
-	{PHY_DDR3_RTT_138ohm, 138},
-	{PHY_DDR3_RTT_121ohm, 121},
-	{PHY_DDR3_RTT_107ohm, 107},
-	{PHY_DDR3_RTT_97ohm, 97},
-	{PHY_DDR3_RTT_88ohm, 88},
-	{PHY_DDR3_RTT_80ohm, 80},
-	{PHY_DDR3_RTT_74ohm, 74},
-	{PHY_DDR3_RTT_69ohm, 69},
+	{PHY_DDR3_RTT_561ohm, 561},
+	{PHY_DDR3_RTT_282ohm, 282},
+	{PHY_DDR3_RTT_188ohm, 188},
+	{PHY_DDR3_RTT_141ohm, 141},
+	{PHY_DDR3_RTT_113ohm, 113},
+	{PHY_DDR3_RTT_94ohm, 94},
+	{PHY_DDR3_RTT_81ohm, 81},
+	{PHY_DDR3_RTT_72ohm, 72},
 	{PHY_DDR3_RTT_64ohm, 64},
-	{PHY_DDR3_RTT_60ohm, 60},
-	{PHY_DDR3_RTT_57ohm, 57},
-	{PHY_DDR3_RTT_54ohm, 54},
-	{PHY_DDR3_RTT_51ohm, 51},
+	{PHY_DDR3_RTT_58ohm, 58},
+	{PHY_DDR3_RTT_52ohm, 52},
 	{PHY_DDR3_RTT_48ohm, 48},
-	{PHY_DDR3_RTT_46ohm, 46},
 	{PHY_DDR3_RTT_44ohm, 44},
-	{PHY_DDR3_RTT_42ohm, 42}
+	{PHY_DDR3_RTT_41ohm, 41},
+	{PHY_DDR3_RTT_38ohm, 38},
+	{PHY_DDR3_RTT_37ohm, 37},
+	{PHY_DDR3_RTT_34ohm, 34},
+	{PHY_DDR3_RTT_32ohm, 32},
+	{PHY_DDR3_RTT_31ohm, 31},
+	{PHY_DDR3_RTT_29ohm, 29},
+	{PHY_DDR3_RTT_28ohm, 28},
+	{PHY_DDR3_RTT_27ohm, 27},
+	{PHY_DDR3_RTT_25ohm, 25}
 };
 
 static u16 d4lp3_phy_drv_2_ohm[][2] = {
-	{PHY_DDR4_LPDDR3_RON_570ohm, 570},
-	{PHY_DDR4_LPDDR3_RON_285ohm, 285},
-	{PHY_DDR4_LPDDR3_RON_190ohm, 190},
-	{PHY_DDR4_LPDDR3_RON_142ohm, 142},
-	{PHY_DDR4_LPDDR3_RON_114ohm, 114},
-	{PHY_DDR4_LPDDR3_RON_95ohm, 95},
+	{PHY_DDR4_LPDDR3_RON_482ohm, 482},
+	{PHY_DDR4_LPDDR3_RON_244ohm, 244},
+	{PHY_DDR4_LPDDR3_RON_162ohm, 162},
+	{PHY_DDR4_LPDDR3_RON_122ohm, 122},
+	{PHY_DDR4_LPDDR3_RON_97ohm, 97},
 	{PHY_DDR4_LPDDR3_RON_81ohm, 81},
-	{PHY_DDR4_LPDDR3_RON_71ohm, 71},
-	{PHY_DDR4_LPDDR3_RON_63ohm, 63},
-	{PHY_DDR4_LPDDR3_RON_57ohm, 57},
-	{PHY_DDR4_LPDDR3_RON_52ohm, 52},
-	{PHY_DDR4_LPDDR3_RON_47ohm, 47},
+	{PHY_DDR4_LPDDR3_RON_69ohm, 69},
+	{PHY_DDR4_LPDDR3_RON_61ohm, 61},
+	{PHY_DDR4_LPDDR3_RON_54ohm, 54},
+	{PHY_DDR4_LPDDR3_RON_48ohm, 48},
 	{PHY_DDR4_LPDDR3_RON_44ohm, 44},
-	{PHY_DDR4_LPDDR3_RON_41ohm, 41},
-	{PHY_DDR4_LPDDR3_RON_38ohm, 38},
-	{PHY_DDR4_LPDDR3_RON_36ohm, 36},
+	{PHY_DDR4_LPDDR3_RON_40ohm, 40},
+	{PHY_DDR4_LPDDR3_RON_37ohm, 37},
 	{PHY_DDR4_LPDDR3_RON_34ohm, 34},
 	{PHY_DDR4_LPDDR3_RON_32ohm, 32},
 	{PHY_DDR4_LPDDR3_RON_30ohm, 30},
 	{PHY_DDR4_LPDDR3_RON_28ohm, 28},
 	{PHY_DDR4_LPDDR3_RON_27ohm, 27},
-	{PHY_DDR4_LPDDR3_RON_26ohm, 26},
-	{PHY_DDR4_LPDDR3_RON_25ohm, 25}
+	{PHY_DDR4_LPDDR3_RON_25ohm, 25},
+	{PHY_DDR4_LPDDR3_RON_24ohm, 24},
+	{PHY_DDR4_LPDDR3_RON_23ohm, 23},
+	{PHY_DDR4_LPDDR3_RON_22ohm, 22},
+	{PHY_DDR4_LPDDR3_RON_21ohm, 21}
 };
 
 static u16 d4lp3_phy_odt_2_ohm[][2] = {
 	{PHY_DDR4_LPDDR3_RTT_DISABLE, 0},
-	{PHY_DDR4_LPDDR3_RTT_973ohm, 973},
-	{PHY_DDR4_LPDDR3_RTT_493ohm, 493},
-	{PHY_DDR4_LPDDR3_RTT_327ohm, 327},
-	{PHY_DDR4_LPDDR3_RTT_247ohm, 247},
-	{PHY_DDR4_LPDDR3_RTT_197ohm, 197},
-	{PHY_DDR4_LPDDR3_RTT_164ohm, 164},
-	{PHY_DDR4_LPDDR3_RTT_141ohm, 141},
-	{PHY_DDR4_LPDDR3_RTT_123ohm, 123},
-	{PHY_DDR4_LPDDR3_RTT_109ohm, 109},
+	{PHY_DDR4_LPDDR3_RTT_586ohm, 586},
+	{PHY_DDR4_LPDDR3_RTT_294ohm, 294},
+	{PHY_DDR4_LPDDR3_RTT_196ohm, 196},
+	{PHY_DDR4_LPDDR3_RTT_148ohm, 148},
+	{PHY_DDR4_LPDDR3_RTT_118ohm, 118},
 	{PHY_DDR4_LPDDR3_RTT_99ohm, 99},
-	{PHY_DDR4_LPDDR3_RTT_90ohm, 90},
-	{PHY_DDR4_LPDDR3_RTT_82ohm, 82},
+	{PHY_DDR4_LPDDR3_RTT_85ohm, 58},
 	{PHY_DDR4_LPDDR3_RTT_76ohm, 76},
-	{PHY_DDR4_LPDDR3_RTT_70ohm, 70},
-	{PHY_DDR4_LPDDR3_RTT_66ohm, 66},
-	{PHY_DDR4_LPDDR3_RTT_62ohm, 62},
-	{PHY_DDR4_LPDDR3_RTT_58ohm, 58},
+	{PHY_DDR4_LPDDR3_RTT_67ohm, 67},
+	{PHY_DDR4_LPDDR3_RTT_60ohm, 60},
 	{PHY_DDR4_LPDDR3_RTT_55ohm, 55},
-	{PHY_DDR4_LPDDR3_RTT_52ohm, 52},
-	{PHY_DDR4_LPDDR3_RTT_49ohm, 49},
-	{PHY_DDR4_LPDDR3_RTT_47ohm, 47},
-	{PHY_DDR4_LPDDR3_RTT_45ohm, 45},
-	{PHY_DDR4_LPDDR3_RTT_43ohm, 43}
+	{PHY_DDR4_LPDDR3_RTT_50ohm, 50},
+	{PHY_DDR4_LPDDR3_RTT_46ohm, 46},
+	{PHY_DDR4_LPDDR3_RTT_43ohm, 43},
+	{PHY_DDR4_LPDDR3_RTT_40ohm, 40},
+	{PHY_DDR4_LPDDR3_RTT_38ohm, 38},
+	{PHY_DDR4_LPDDR3_RTT_36ohm, 36},
+	{PHY_DDR4_LPDDR3_RTT_34ohm, 34},
+	{PHY_DDR4_LPDDR3_RTT_32ohm, 32},
+	{PHY_DDR4_LPDDR3_RTT_31ohm, 31},
+	{PHY_DDR4_LPDDR3_RTT_29ohm, 29},
+	{PHY_DDR4_LPDDR3_RTT_28ohm, 28},
+	{PHY_DDR4_LPDDR3_RTT_27ohm, 27}
 };
 
 static u16 lp4_phy_drv_2_ohm[][2] = {
-	{PHY_LPDDR4_RON_606ohm, 606},
-	{PHY_LPDDR4_RON_303ohm, 303},
-	{PHY_LPDDR4_RON_202ohm, 202},
-	{PHY_LPDDR4_RON_152ohm, 153},
-	{PHY_LPDDR4_RON_121ohm, 121},
+	{PHY_LPDDR4_RON_501ohm, 501},
+	{PHY_LPDDR4_RON_253ohm, 253},
+	{PHY_LPDDR4_RON_168ohm, 168},
+	{PHY_LPDDR4_RON_126ohm, 126},
 	{PHY_LPDDR4_RON_101ohm, 101},
-	{PHY_LPDDR4_RON_87ohm, 87},
-	{PHY_LPDDR4_RON_76ohm, 76},
-	{PHY_LPDDR4_RON_67ohm, 67},
-	{PHY_LPDDR4_RON_61ohm, 61},
-	{PHY_LPDDR4_RON_55ohm, 55},
-	{PHY_LPDDR4_RON_51ohm, 51},
-	{PHY_LPDDR4_RON_47ohm, 47},
-	{PHY_LPDDR4_RON_43ohm, 43},
-	{PHY_LPDDR4_RON_40ohm, 40},
+	{PHY_LPDDR4_RON_84ohm, 84},
+	{PHY_LPDDR4_RON_72ohm, 72},
+	{PHY_LPDDR4_RON_63ohm, 63},
+	{PHY_LPDDR4_RON_56ohm, 56},
+	{PHY_LPDDR4_RON_50ohm, 50},
+	{PHY_LPDDR4_RON_46ohm, 46},
+	{PHY_LPDDR4_RON_42ohm, 42},
 	{PHY_LPDDR4_RON_38ohm, 38},
 	{PHY_LPDDR4_RON_36ohm, 36},
-	{PHY_LPDDR4_RON_34ohm, 34},
-	{PHY_LPDDR4_RON_32ohm, 32},
-	{PHY_LPDDR4_RON_30ohm, 30},
+	{PHY_LPDDR4_RON_33ohm, 33},
+	{PHY_LPDDR4_RON_31ohm, 31},
 	{PHY_LPDDR4_RON_29ohm, 29},
 	{PHY_LPDDR4_RON_28ohm, 28},
-	{PHY_LPDDR4_RON_26ohm, 26}
+	{PHY_LPDDR4_RON_26ohm, 26},
+	{PHY_LPDDR4_RON_25ohm, 25},
+	{PHY_LPDDR4_RON_24ohm, 24},
+	{PHY_LPDDR4_RON_23ohm, 23},
+	{PHY_LPDDR4_RON_22ohm, 22}
 };
 
 static u16 lp4_phy_odt_2_ohm[][2] = {
 	{PHY_LPDDR4_RTT_DISABLE, 0},
-	{PHY_LPDDR4_RTT_998ohm, 998},
-	{PHY_LPDDR4_RTT_506ohm, 506},
-	{PHY_LPDDR4_RTT_336ohm, 336},
-	{PHY_LPDDR4_RTT_253ohm, 253},
+	{PHY_LPDDR4_RTT_604ohm, 604},
+	{PHY_LPDDR4_RTT_303ohm, 303},
 	{PHY_LPDDR4_RTT_202ohm, 202},
-	{PHY_LPDDR4_RTT_169ohm, 169},
-	{PHY_LPDDR4_RTT_144ohm, 144},
-	{PHY_LPDDR4_RTT_127ohm, 127},
-	{PHY_LPDDR4_RTT_112ohm, 112},
+	{PHY_LPDDR4_RTT_152ohm, 152},
+	{PHY_LPDDR4_RTT_122ohm, 122},
 	{PHY_LPDDR4_RTT_101ohm, 101},
-	{PHY_LPDDR4_RTT_92ohm, 92},
-	{PHY_LPDDR4_RTT_84ohm, 84},
+	{PHY_LPDDR4_RTT_87ohm,	87},
 	{PHY_LPDDR4_RTT_78ohm, 78},
-	{PHY_LPDDR4_RTT_72ohm, 72},
-	{PHY_LPDDR4_RTT_67ohm, 67},
-	{PHY_LPDDR4_RTT_63ohm, 63},
-	{PHY_LPDDR4_RTT_60ohm, 60},
+	{PHY_LPDDR4_RTT_69ohm, 69},
+	{PHY_LPDDR4_RTT_62ohm, 62},
 	{PHY_LPDDR4_RTT_56ohm, 56},
-	{PHY_LPDDR4_RTT_53ohm, 53},
-	{PHY_LPDDR4_RTT_51ohm, 51},
+	{PHY_LPDDR4_RTT_52ohm, 52},
 	{PHY_LPDDR4_RTT_48ohm, 48},
-	{PHY_LPDDR4_RTT_46ohm, 46},
-	{PHY_LPDDR4_RTT_44ohm, 44}
+	{PHY_LPDDR4_RTT_44ohm, 44},
+	{PHY_LPDDR4_RTT_41ohm, 41},
+	{PHY_LPDDR4_RTT_39ohm, 39},
+	{PHY_LPDDR4_RTT_37ohm, 37},
+	{PHY_LPDDR4_RTT_35ohm, 35},
+	{PHY_LPDDR4_RTT_33ohm, 33},
+	{PHY_LPDDR4_RTT_32ohm, 32},
+	{PHY_LPDDR4_RTT_30ohm, 30},
+	{PHY_LPDDR4_RTT_29ohm, 29},
+	{PHY_LPDDR4_RTT_27ohm, 27}
 };
 
 static u32 lp4_odt_calc(u32 odt_ohm)
@@ -965,6 +955,13 @@ static void set_ds_odt(struct dram_info *dram,
 	clrsetbits_le32(PHY_REG(phy_base, 0x101), 0x1f, phy_ca_drv);
 	clrsetbits_le32(PHY_REG(phy_base, 0x102), 0x1f, phy_clk_drv);
 	clrsetbits_le32(PHY_REG(phy_base, 0x103), 0x1f, phy_clk_drv);
+	if (dramtype == LPDDR4) {
+		clrsetbits_le32(PHY_REG(phy_base, 0x107), 0x1f, phy_clk_drv);
+		clrsetbits_le32(PHY_REG(phy_base, 0x108), 0x1f, phy_clk_drv);
+	} else {
+		clrsetbits_le32(PHY_REG(phy_base, 0x107), 0x1f, phy_ca_drv);
+		clrsetbits_le32(PHY_REG(phy_base, 0x108), 0x1f, phy_ca_drv);
+	}
 	/* clk / cmd slew rate */
 	clrsetbits_le32(PHY_REG(phy_base, 0x106), 0x1f, sr_clk);
 
@@ -1260,6 +1257,29 @@ void send_a_refresh(struct dram_info *dram)
 	writel(0x3, pctl_base + DDR_PCTL2_DBGCMD);
 }
 
+static void enter_sr(struct dram_info *dram, u32 en)
+{
+	void __iomem *pctl_base = dram->pctl;
+
+	if (en) {
+		setbits_le32(pctl_base + DDR_PCTL2_PWRCTL, PCTL2_SELFREF_SW);
+		while (1) {
+			if (((readl(pctl_base + DDR_PCTL2_STAT) &
+			      PCTL2_SELFREF_TYPE_MASK) ==
+			     PCTL2_SELFREF_TYPE_SR_NOT_AUTO) &&
+			    ((readl(pctl_base + DDR_PCTL2_STAT) &
+			      PCTL2_OPERATING_MODE_MASK) ==
+			     PCTL2_OPERATING_MODE_SR))
+				break;
+		}
+	} else {
+		clrbits_le32(pctl_base + DDR_PCTL2_PWRCTL, PCTL2_SELFREF_SW);
+		while ((readl(pctl_base + DDR_PCTL2_STAT) &
+		       PCTL2_OPERATING_MODE_MASK) == PCTL2_OPERATING_MODE_SR)
+			continue;
+	}
+}
+
 void record_dq_prebit(struct dram_info *dram)
 {
 	u32 group, i, tmp;
@@ -1326,6 +1346,7 @@ static void modify_ca_deskew(struct dram_info *dram, u32 dir, int delta_dif,
 {
 	void __iomem *phy_base = dram->phy;
 	u32 i, cs_en, tmp;
+	u32 dfi_lp_stat = 0;
 
 	if (cs == 0)
 		cs_en = 1;
@@ -1333,6 +1354,13 @@ static void modify_ca_deskew(struct dram_info *dram, u32 dir, int delta_dif,
 		cs_en = 2;
 	else
 		cs_en = 3;
+
+	if (dramtype == LPDDR4 &&
+	    ((readl(PHY_REG(phy_base, 0x60)) & BIT(5)) == 0)) {
+		dfi_lp_stat = 1;
+		setbits_le32(PHY_REG(phy_base, 0x60), BIT(5));
+	}
+	enter_sr(dram, 1);
 
 	for (i = 0; i < 0x20; i++) {
 		if (dir == DESKEW_MDF_ABS_VAL)
@@ -1357,6 +1385,11 @@ static void modify_ca_deskew(struct dram_info *dram, u32 dir, int delta_dif,
 		clrbits_le32(PHY_REG(phy_base, 0x10), cs_en << 6);
 		update_ca_prebit(dram);
 	}
+	enter_sr(dram, 0);
+
+	if (dfi_lp_stat)
+		clrbits_le32(PHY_REG(phy_base, 0x60), BIT(5));
+
 }
 
 static u32 get_min_value(struct dram_info *dram, u32 signal, u32 rank)
@@ -1464,7 +1497,7 @@ static int data_training_rg(struct dram_info *dram, u32 cs, u32 dramtype)
 	if (dramtype != LPDDR4) {
 		for (i = 0; i < 4; i++) {
 			j = 0x110 + i * 0x10;
-			writel(PHY_DDR4_LPDDR3_RTT_247ohm,
+			writel(PHY_DDR4_LPDDR3_RTT_294ohm,
 			       PHY_REG(phy_base, j));
 			writel(PHY_DDR4_LPDDR3_RTT_DISABLE,
 			       PHY_REG(phy_base, j + 0x1));
@@ -1858,7 +1891,9 @@ static int get_wrlvl_val(struct dram_info *dram,
 
 	lp_stat = low_power_update(dram, 0);
 
-	clk_skew = readl(PHY_REG(phy_base, 0x150 + 0x17));
+	clk_skew = 0x1f;
+	modify_ca_deskew(dram, DESKEW_MDF_ABS_VAL, clk_skew, clk_skew, 3,
+			 sdram_params->base.dramtype);
 
 	ret = data_training(dram, 0, sdram_params, 0, WRITE_LEVELING);
 	if (sdram_params->ch.cap_info.rank == 2)
@@ -1884,7 +1919,7 @@ static int high_freq_training(struct dram_info *dram,
 	void __iomem *phy_base = dram->phy;
 	u32 dramtype = sdram_params->base.dramtype;
 	int min_val;
-	u32 dqs_skew, clk_skew, ca_skew;
+	int dqs_skew, clk_skew, ca_skew;
 	int ret;
 
 	dqs_skew = 0;
@@ -1962,6 +1997,32 @@ static void set_ddrconfig(struct dram_info *dram, u32 ddrconfig)
 static void update_noc_timing(struct dram_info *dram,
 			      struct rv1126_sdram_params *sdram_params)
 {
+	void __iomem *pctl_base = dram->pctl;
+	u32 bw, bl;
+
+	bw = 8 << sdram_params->ch.cap_info.bw;
+	bl = ((readl(pctl_base + DDR_PCTL2_MSTR) >> 16) & 0xf) * 2;
+
+	/* update the noc timing related to data bus width */
+	if ((bw / 8 * bl) == 16)
+		sdram_params->ch.noc_timings.ddrmode.b.burstsize = 0;
+	else if ((bw / 8 * bl) == 32)
+		sdram_params->ch.noc_timings.ddrmode.b.burstsize = 1;
+	else if ((bw / 8 * bl) == 64)
+		sdram_params->ch.noc_timings.ddrmode.b.burstsize = 2;
+	else
+		sdram_params->ch.noc_timings.ddrmode.b.burstsize = 3;
+
+	sdram_params->ch.noc_timings.ddrtimingc0.b.burstpenalty =
+		(bl * bw / 8) > 16 ? (bl / 4) : (16 / (bl * bw / 8)) * bl / 4;
+
+	if (sdram_params->base.dramtype == LPDDR4) {
+		sdram_params->ch.noc_timings.ddrmode.b.mwrsize =
+			(bw == 16) ? 0x1 : 0x2;
+		sdram_params->ch.noc_timings.ddrtimingc0.b.wrtomwr =
+			3 * sdram_params->ch.noc_timings.ddrtimingc0.b.burstpenalty;
+	}
+
 	writel(sdram_params->ch.noc_timings.ddrtiminga0.d32,
 	       &dram->msch->ddrtiminga0);
 	writel(sdram_params->ch.noc_timings.ddrtimingb0.d32,
@@ -2133,6 +2194,21 @@ static int sdram_init_(struct dram_info *dram,
 	pctl_cfg(dram->pctl, &sdram_params->pctl_regs,
 		 dram->sr_idle, dram->pd_idle);
 
+	if (sdram_params->ch.cap_info.bw == 2)
+		/* 32bit interface use pageclose */
+		setbits_le32(pctl_base + DDR_PCTL2_SCHED, 1 << 2);
+	else
+		clrbits_le32(pctl_base + DDR_PCTL2_SCHED, 1 << 2);
+
+#ifdef CONFIG_ROCKCHIP_DRAM_EXTENDED_TEMP_SUPPORT
+	u32 tmp, trefi;
+
+	tmp = readl(pctl_base + DDR_PCTL2_RFSHTMG);
+	trefi = (tmp >> 16) & 0xfff;
+	writel((tmp & 0xf000ffff) | (trefi / 2) << 16,
+	       pctl_base + DDR_PCTL2_RFSHTMG);
+#endif
+
 	/* set frequency_mode */
 	setbits_le32(pctl_base + DDR_PCTL2_MSTR, 0x1 << 29);
 	/* set target_frequency to Frequency 0 */
@@ -2270,8 +2346,6 @@ static u64 dram_detect_cap(struct dram_info *dram,
 	if (dram_type != LPDDR4) {
 		setbits_le32(PHY_REG(phy_base, 0xf), 0xf);
 
-		phy_soft_reset(dram);
-
 		if (data_training(dram, 0, sdram_params, 0,
 				  READ_GATE_TRAINING) == 0)
 			cap_info->bw = 2;
@@ -2371,9 +2445,24 @@ static int sdram_init_detect(struct dram_info *dram,
 	u32 ret;
 	u32 sys_reg = 0;
 	u32 sys_reg3 = 0;
+	struct sdram_head_info_index_v2 *index =
+		(struct sdram_head_info_index_v2 *)common_info;
+	struct dq_map_info *map_info;
 
-	if (sdram_init_(dram, sdram_params, 0) != 0)
-		return -1;
+	map_info = (struct dq_map_info *)((void *)common_info +
+		index->dq_map_index.offset * 4);
+
+	if (sdram_init_(dram, sdram_params, 0)) {
+		if (sdram_params->base.dramtype == DDR3) {
+			clrsetbits_le32(&map_info->byte_map[0], 0xff << 24,
+					((0x1 << 6) | (0x3 << 4) | (0x2 << 2) |
+					(0x0 << 0)) << 24);
+			if (sdram_init_(dram, sdram_params, 0))
+				return -1;
+		} else {
+			return -1;
+		}
+	}
 
 	if (sdram_params->base.dramtype == DDR3) {
 		writel(PATTERN, CONFIG_SYS_SDRAM_BASE);
@@ -2489,6 +2578,16 @@ static void pre_set_rate(struct dram_info *dram,
 			}
 		}
 	}
+
+#ifdef CONFIG_ROCKCHIP_DRAM_EXTENDED_TEMP_SUPPORT
+	u32 tmp, trefi;
+
+	tmp = readl(pctl_base + UMCTL2_REGS_FREQ(dst_fsp) + DDR_PCTL2_RFSHTMG);
+	trefi = (tmp >> 16) & 0xfff;
+	writel((tmp & 0xf000ffff) | (trefi / 2) << 16,
+	       pctl_base + UMCTL2_REGS_FREQ(dst_fsp) + DDR_PCTL2_RFSHTMG);
+#endif
+
 	sw_set_ack(dram);
 
 	/* phy timing update */
@@ -2618,18 +2717,15 @@ static void save_fsp_param(struct dram_info *dram, u32 dst_fsp,
 		temp = readl(pctl_base + UMCTL2_REGS_FREQ(dst_fsp) +
 			     DDR_PCTL2_INIT3);
 		temp = (temp >> PCTL2_DDR34_MR1_SHIFT) & PCTL2_MR_MASK;
-		p_fsp_param->ds_pdds = ((temp >> 1) & 0x1) |
-				       (((temp >> 5) & 0x1) << 1);
-		p_fsp_param->dq_odt = ((temp >> 2) & 0x1) |
-				      (((temp >> 6) & 0x1) << 1) |
-				      (((temp >> 9) & 0x1) << 2);
+		p_fsp_param->ds_pdds = temp & DDR3_DS_MASK;
+		p_fsp_param->dq_odt = temp & DDR3_RTT_NOM_MASK;
 		p_fsp_param->ca_odt = p_fsp_param->dq_odt;
 	} else if (sdram_params->base.dramtype == DDR4) {
 		temp = readl(pctl_base + UMCTL2_REGS_FREQ(dst_fsp) +
 			     DDR_PCTL2_INIT3);
 		temp = (temp >> PCTL2_DDR34_MR1_SHIFT) & PCTL2_MR_MASK;
-		p_fsp_param->ds_pdds = (temp >> 1) & 0x3;
-		p_fsp_param->dq_odt = (temp >> 8) & 0x7;
+		p_fsp_param->ds_pdds = temp & DDR4_DS_MASK;
+		p_fsp_param->dq_odt = temp & DDR4_RTT_NOM_MASK;
 		p_fsp_param->ca_odt = p_fsp_param->dq_odt;
 	} else if (sdram_params->base.dramtype == LPDDR3) {
 		temp = readl(pctl_base + UMCTL2_REGS_FREQ(dst_fsp) +
@@ -2643,13 +2739,13 @@ static void save_fsp_param(struct dram_info *dram, u32 dst_fsp,
 		temp = readl(pctl_base + UMCTL2_REGS_FREQ(dst_fsp) +
 			     DDR_PCTL2_INIT4);
 		temp = (temp >> PCTL2_LPDDR234_MR3_SHIFT) & PCTL2_MR_MASK;
-		p_fsp_param->ds_pdds = (temp >> 3) & 0x7;
+		p_fsp_param->ds_pdds = temp & LPDDR4_PDDS_MASK;
 
 		temp = readl(pctl_base + UMCTL2_REGS_FREQ(dst_fsp) +
 			     DDR_PCTL2_INIT6);
 		temp = (temp >> PCTL2_LPDDR4_MR11_SHIFT) & PCTL2_MR_MASK;
-		p_fsp_param->dq_odt = temp & 0x7;
-		p_fsp_param->ca_odt = (temp >> 4) & 0x7;
+		p_fsp_param->dq_odt = temp & LPDDR4_DQODT_MASK;
+		p_fsp_param->ca_odt = temp & LPDDR4_CAODT_MASK;
 
 		temp = MAX(readl(PHY_REG(phy_base, 0x3ae)),
 			   readl(PHY_REG(phy_base, 0x3ce)));
@@ -2696,7 +2792,7 @@ static void save_fsp_param(struct dram_info *dram, u32 dst_fsp,
 	p_fsp_param->flag = FSP_FLAG;
 }
 
-#ifndef CONFIG_ROCKCHIP_THUNDER_BOOT
+#ifndef CONFIG_SPL_KERNEL_BOOT
 static void copy_fsp_param_to_ddr(void)
 {
 	memcpy((void *)FSP_PARAM_STORE_ADDR, (void *)&fsp_param,
@@ -2720,6 +2816,7 @@ void ddr_set_rate(struct dram_info *dram,
 	lp_stat = low_power_update(dram, 0);
 	sdram_params_new = get_default_sdram_config(freq);
 	sdram_params_new->ch.cap_info.rank = sdram_params->ch.cap_info.rank;
+	sdram_params_new->ch.cap_info.bw = sdram_params->ch.cap_info.bw;
 
 	pre_set_rate(dram, sdram_params_new, dst_fsp, dst_fsp_lp4);
 
@@ -2756,21 +2853,11 @@ void ddr_set_rate(struct dram_info *dram,
 		     PCTL2_DIS_AUTO_REFRESH);
 	update_refresh_reg(dram);
 
-	setbits_le32(pctl_base + DDR_PCTL2_PWRCTL, PCTL2_SELFREF_SW);
-	while (1) {
-		if (((readl(pctl_base + DDR_PCTL2_STAT) &
-		      PCTL2_SELFREF_TYPE_MASK) ==
-		     PCTL2_SELFREF_TYPE_SR_NOT_AUTO) &&
-		    ((readl(pctl_base + DDR_PCTL2_STAT) &
-		      PCTL2_OPERATING_MODE_MASK) ==
-		     PCTL2_OPERATING_MODE_SR)) {
-			break;
-		}
-	}
+	enter_sr(dram, 1);
 
 	writel(PMUGRF_CON_DDRPHY_BUFFEREN_MASK |
 	       PMUGRF_CON_DDRPHY_BUFFEREN_EN,
-	       dram->pmugrf->soc_con[0]);
+	       &dram->pmugrf->soc_con[0]);
 	sw_set_req(dram);
 	clrbits_le32(pctl_base + DDR_PCTL2_DFIMISC,
 		     PCTL2_DFI_INIT_COMPLETE_EN);
@@ -2789,7 +2876,7 @@ void ddr_set_rate(struct dram_info *dram,
 	sw_set_ack(dram);
 
 	writel(DDR_MSCH_EN_MASK | (0x1 << DDR_MSCH_EN_SHIFT),
-	       dram->cru->clkgate_con[2]);
+	       &dram->cru->clkgate_con[21]);
 	writel(CLK_DDR_UPCTL_EN_MASK | ACLK_DDR_UPCTL_EN_MASK |
 					(0x1 << CLK_DDR_UPCTL_EN_SHIFT) |
 					(0x1 << ACLK_DDR_UPCTL_EN_SHIFT),
@@ -2803,9 +2890,9 @@ void ddr_set_rate(struct dram_info *dram,
 
 	writel(PMUGRF_CON_DDRPHY_BUFFEREN_MASK |
 			PMUGRF_CON_DDRPHY_BUFFEREN_DIS,
-			dram->pmugrf->soc_con[0]);
+			&dram->pmugrf->soc_con[0]);
 	writel(DDR_MSCH_EN_MASK | (0x0 << DDR_MSCH_EN_SHIFT),
-	       dram->cru->clkgate_con[2]);
+	       &dram->cru->clkgate_con[21]);
 	writel(CLK_DDR_UPCTL_EN_MASK | ACLK_DDR_UPCTL_EN_MASK |
 					(0x0 << CLK_DDR_UPCTL_EN_SHIFT) |
 					(0x0 << ACLK_DDR_UPCTL_EN_SHIFT),
@@ -2821,10 +2908,7 @@ void ddr_set_rate(struct dram_info *dram,
 	update_refresh_reg(dram);
 	clrsetbits_le32(PHY_REG(phy_base, 0xc), 0x3 << 2, dst_fsp << 2);
 
-	clrbits_le32(pctl_base + DDR_PCTL2_PWRCTL, PCTL2_SELFREF_SW);
-	while ((readl(pctl_base + DDR_PCTL2_STAT) &
-	       PCTL2_OPERATING_MODE_MASK) == PCTL2_OPERATING_MODE_SR)
-		continue;
+	enter_sr(dram, 0);
 
 	setbits_le32(PHY_REG(phy_base, 0x71), 1 << 5);
 	clrbits_le32(PHY_REG(phy_base, 0x71), 1 << 5);
@@ -2886,12 +2970,12 @@ void ddr_set_rate(struct dram_info *dram,
 			       PCTL2_MR_MASK) & (~(BIT(7)))) |
 			      dst_fsp_lp4 << 7, dramtype);
 	}
+	clrbits_le32(pctl_base + DDR_PCTL2_RFSHCTL3,
+		     PCTL2_DIS_AUTO_REFRESH);
+	update_refresh_reg(dram);
 
 	/* training */
 	high_freq_training(dram, sdram_params_new, dst_fsp);
-
-	clrbits_le32(pctl_base + DDR_PCTL2_RFSHCTL3,
-		     PCTL2_DIS_AUTO_REFRESH);
 	low_power_update(dram, lp_stat);
 
 	save_fsp_param(dram, dst_fsp, sdram_params_new);
@@ -2903,7 +2987,7 @@ static void ddr_set_rate_for_fsp(struct dram_info *dram,
 	struct ddr2_3_4_lp2_3_info *ddr_info;
 	u32 f0;
 	u32 dramtype = sdram_params->base.dramtype;
-#ifndef CONFIG_ROCKCHIP_THUNDER_BOOT
+#ifndef CONFIG_SPL_KERNEL_BOOT
 	u32 f1, f2, f3;
 #endif
 
@@ -2914,7 +2998,7 @@ static void ddr_set_rate_for_fsp(struct dram_info *dram,
 	f0 = (ddr_info->ddr_freq0_1 >> DDR_FREQ_F0_SHIFT) &
 	     DDR_FREQ_MASK;
 
-#ifndef CONFIG_ROCKCHIP_THUNDER_BOOT
+#ifndef CONFIG_SPL_KERNEL_BOOT
 	memset((void *)FSP_PARAM_STORE_ADDR, 0, sizeof(fsp_param));
 	memset((void *)&fsp_param, 0, sizeof(fsp_param));
 
@@ -2929,7 +3013,7 @@ static void ddr_set_rate_for_fsp(struct dram_info *dram,
 	if (get_wrlvl_val(dram, sdram_params))
 		printascii("get wrlvl value fail\n");
 
-#ifndef CONFIG_ROCKCHIP_THUNDER_BOOT
+#ifndef CONFIG_SPL_KERNEL_BOOT
 	printascii("change to: ");
 	printdec(f1);
 	printascii("MHz\n");
@@ -2947,7 +3031,7 @@ static void ddr_set_rate_for_fsp(struct dram_info *dram,
 	printascii("change to: ");
 	printdec(f0);
 	printascii("MHz(final freq)\n");
-#ifndef CONFIG_ROCKCHIP_THUNDER_BOOT
+#ifndef CONFIG_SPL_KERNEL_BOOT
 	ddr_set_rate(&dram_info, sdram_params, f0, f3, 0, 0, 1);
 #else
 	ddr_set_rate(&dram_info, sdram_params, f0, sdram_params->base.ddr_freq, 1, 1, 1);
@@ -2983,6 +3067,9 @@ int sdram_init(void)
 	dram_info.ddrgrf = (void *)DDR_GRF_BASE_ADDR;
 	dram_info.pmugrf = (void *)PMU_GRF_BASE_ADDR;
 
+#ifdef CONFIG_ROCKCHIP_DRAM_EXTENDED_TEMP_SUPPORT
+	printascii("extended temp support\n");
+#endif
 	if (index->version_info != 2 ||
 	    (index->global_index.size != sizeof(struct global_info) / 4) ||
 	    (index->ddr3_index.size !=
@@ -3028,7 +3115,7 @@ int sdram_init(void)
 	print_ddr_info(sdram_params);
 
 	ddr_set_rate_for_fsp(&dram_info, sdram_params);
-#ifndef CONFIG_ROCKCHIP_THUNDER_BOOT
+#ifndef CONFIG_SPL_KERNEL_BOOT
 	copy_fsp_param_to_ddr();
 #endif
 

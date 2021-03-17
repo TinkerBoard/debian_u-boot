@@ -5,9 +5,11 @@
  */
 
 #include <common.h>
+#include <boot_rkimg.h>
 #include <debug_uart.h>
 #include <dm.h>
 #include <key.h>
+#include <led.h>
 #include <misc.h>
 #include <ram.h>
 #include <spl.h>
@@ -185,11 +187,14 @@ void board_init_f(ulong dummy)
 	 * printhex8(0x1234);
 	 * printascii("string");
 	 */
-	debug_uart_init();
+	if (!gd->serial.using_pre_serial &&
+	    !(gd->flags & GD_FLG_DISABLE_CONSOLE))
+		debug_uart_init();
 	printascii("U-Boot SPL board init");
 #endif
 	usb_current_limit_unlock(true);
 
+	gd->sys_start_tick = get_ticks();
 #ifdef CONFIG_SPL_FRAMEWORK
 	ret = spl_early_init();
 	if (ret) {
@@ -228,6 +233,45 @@ int board_fit_config_name_match(const char *name)
 }
 #endif
 
+int board_init_f_boot_flags(void)
+{
+	int boot_flags = 0;
+
+	/* pre-loader serial */
+#if defined(CONFIG_ROCKCHIP_PRELOADER_SERIAL) && \
+    defined(CONFIG_ROCKCHIP_PRELOADER_ATAGS)
+	struct tag *t;
+
+
+	t = atags_get_tag(ATAG_SERIAL);
+	if (t) {
+		gd->serial.using_pre_serial = 1;
+		gd->serial.enable = t->u.serial.enable;
+		gd->serial.baudrate = t->u.serial.baudrate;
+		gd->serial.addr = t->u.serial.addr;
+		gd->serial.id = t->u.serial.id;
+		gd->baudrate = t->u.serial.baudrate;
+		if (!t->u.serial.enable)
+			boot_flags |= GD_FLG_DISABLE_CONSOLE;
+		debug("preloader: enable=%d, addr=0x%x, baudrate=%d, id=%d\n",
+		      t->u.serial.enable, (u32)t->u.serial.addr,
+		      t->u.serial.baudrate, t->u.serial.id);
+	} else
+#endif
+	{
+		gd->baudrate = CONFIG_BAUDRATE;
+		gd->serial.baudrate = CONFIG_BAUDRATE;
+		gd->serial.addr = CONFIG_DEBUG_UART_BASE;
+	}
+
+	/* The highest priority to turn off (override) console */
+#if defined(CONFIG_DISABLE_CONSOLE)
+	boot_flags |= GD_FLG_DISABLE_CONSOLE;
+#endif
+
+	return boot_flags;
+}
+
 #ifdef CONFIG_SPL_BOARD_INIT
 __weak int rk_spl_board_init(void)
 {
@@ -249,7 +293,7 @@ static int setup_led(void)
 		debug("%s: get=%d\n", __func__, ret);
 		return ret;
 	}
-	ret = led_set_on(dev, 1);
+	ret = led_set_state(dev, LEDST_ON);
 	if (ret)
 		return ret;
 #endif
@@ -309,6 +353,7 @@ void spl_next_stage(struct spl_image_info *spl)
 	case BOOT_PANIC:
 	case BOOT_WATCHDOG:
 	case BOOT_NORMAL:
+	case BOOT_RECOVERY:
 		spl->next_stage = SPL_NEXT_STAGE_KERNEL;
 		break;
 	default:
@@ -317,14 +362,42 @@ void spl_next_stage(struct spl_image_info *spl)
 }
 #endif
 
-int spl_board_prepare_for_jump(struct spl_image_info *spl_image)
+#ifdef CONFIG_SPL_KERNEL_BOOT
+const char *spl_kernel_partition(struct spl_image_info *spl,
+				 struct spl_load_info *info)
 {
-#if CONFIG_SPL_FIT_ROLLBACK_PROTECT
-	/* TODO */
-	printf("spl fit: rollback protect not implement\n");
+	struct bootloader_message *bmsg = NULL;
+	u32 boot_mode;
+	int ret, cnt;
+	u32 sector = 0;
+
+#ifdef CONFIG_SPL_LIBDISK_SUPPORT
+	disk_partition_t part_info;
+
+	ret = part_get_info_by_name(info->dev, PART_MISC, &part_info);
+	if (ret >= 0)
+		sector = part_info.start;
+#else
+	sector = CONFIG_SPL_MISC_SECTOR;
 #endif
-	return 0;
+	if (sector) {
+		cnt = DIV_ROUND_UP(sizeof(*bmsg), info->bl_len);
+		bmsg = memalign(ARCH_DMA_MINALIGN, cnt * info->bl_len);
+		ret = info->read(info, sector + BCB_MESSAGE_BLK_OFFSET,
+				 cnt, bmsg);
+		if (ret == cnt && !strcmp(bmsg->command, "boot-recovery")) {
+			free(bmsg);
+			return PART_RECOVERY;
+		} else {
+			free(bmsg);
+		}
+	}
+
+	boot_mode = readl((void *)CONFIG_ROCKCHIP_BOOT_MODE_REG);
+
+	return (boot_mode == BOOT_RECOVERY) ? PART_RECOVERY : PART_BOOT;
 }
+#endif
 
 void spl_hang_reset(void)
 {
@@ -335,22 +408,97 @@ void spl_hang_reset(void)
 #endif
 }
 
-int fit_board_verify_required_sigs(void)
+#ifdef CONFIG_SPL_FIT_ROLLBACK_PROTECT
+int fit_read_otp_rollback_index(uint32_t fit_index, uint32_t *otp_index)
 {
-	uint8_t vboot = 0;
-#if defined(CONFIG_SPL_ROCKCHIP_SECURE_OTP) || defined(CONFIG_SPL_ROCKCHIP_SECURE_OTP_V2)
+	int ret = 0;
+
+	*otp_index = 0;
+#if defined(CONFIG_SPL_ROCKCHIP_SECURE_OTP_V2)
 	struct udevice *dev;
+	u32 index, i, otp_version;
+	u32 bit_count;
 
 	dev = misc_otp_get_device(OTP_S);
 	if (!dev)
-		return 1;
+		return -ENODEV;
 
-	if (misc_otp_read(dev, 0, &vboot, 1)) {
-		printf("Can't read verified-boot flag\n");
-		return 1;
+	otp_version = 0;
+	for (i = 0; i < OTP_UBOOT_ROLLBACK_WORDS; i++) {
+		if (misc_otp_read(dev, 4 *
+		    (OTP_UBOOT_ROLLBACK_OFFSET + i),
+		    &index,
+		    4)) {
+			printf("Can't read rollback index\n");
+			return -EIO;
+		}
+		bit_count = fls(index);
+		otp_version += bit_count;
+	}
+	*otp_index = otp_version;
+#endif
+
+	return ret;
+}
+
+static int fit_write_otp_rollback_index(u32 fit_index)
+{
+#if defined(CONFIG_SPL_ROCKCHIP_SECURE_OTP_V2)
+	struct udevice *dev;
+	u32 index, i, otp_index;
+
+	if (!fit_index)
+		return 0;
+
+	if (fit_index > OTP_UBOOT_ROLLBACK_WORDS * 32)
+		return -EINVAL;
+
+	dev = misc_otp_get_device(OTP_S);
+	if (!dev)
+		return -ENODEV;
+
+	if (fit_read_otp_rollback_index(fit_index, &otp_index))
+		return -EIO;
+
+	if (otp_index < fit_index) {
+		/* Write new SW version to otp */
+		for (i = 0; i < OTP_UBOOT_ROLLBACK_WORDS; i++) {
+			/* convert to base-1 representation */
+			index = 0xffffffff >> (OTP_ALL_ONES_NUM_BITS -
+				min(fit_index, (u32)OTP_ALL_ONES_NUM_BITS));
+			fit_index -= min(fit_index,
+					  (u32)OTP_ALL_ONES_NUM_BITS);
+			if (index) {
+				if (misc_otp_write(dev, 4 *
+				    (OTP_UBOOT_ROLLBACK_OFFSET + i),
+				    &index,
+				    4)) {
+					printf("Can't write rollback index\n");
+					return -EIO;
+				}
+			}
+		}
 	}
 #endif
-	printf("## Verified-boot: %d\n", vboot == 0xff);
 
-	return vboot == 0xff;
+	return 0;
+}
+#endif
+
+int spl_board_prepare_for_jump(struct spl_image_info *spl_image)
+{
+#ifdef CONFIG_SPL_FIT_ROLLBACK_PROTECT
+	int ret;
+
+	ret = fit_write_otp_rollback_index(gd->rollback_index);
+	if (ret) {
+		panic("Failed to write fit rollback index %d, ret=%d",
+		      gd->rollback_index, ret);
+	}
+#endif
+
+#ifdef CONFIG_SPL_ROCKCHIP_HW_DECOMPRESS
+	misc_decompress_cleanup();
+#endif
+	return 0;
 }

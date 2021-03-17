@@ -503,31 +503,17 @@ static int display_get_timing(struct display_state *state)
 	if (dev_of_valid(panel->dev) &&
 	    !display_get_timing_from_dts(panel_state, mode)) {
 		printf("Using display timing dts\n");
-		goto done;
+		return 0;
 	}
 
 	if (panel->data) {
 		m = (const struct drm_display_mode *)panel->data;
 		memcpy(mode, m, sizeof(*m));
 		printf("Using display timing from compatible panel driver\n");
-		goto done;
+		return 0;
 	}
 
-	printf("failed to find display timing\n");
 	return -ENODEV;
-done:
-	printf("Detailed mode clock %u kHz, flags[%x]\n"
-	       "    H: %04d %04d %04d %04d\n"
-	       "    V: %04d %04d %04d %04d\n"
-	       "bus_format: %x\n",
-	       mode->clock, mode->flags,
-	       mode->hdisplay, mode->hsync_start,
-	       mode->hsync_end, mode->htotal,
-	       mode->vdisplay, mode->vsync_start,
-	       mode->vsync_end, mode->vtotal,
-	       conn_state->bus_format);
-
-	return 0;
 }
 
 static int display_init(struct display_state *state)
@@ -614,6 +600,24 @@ static int display_init(struct display_state *state)
 
 	if (panel_state->panel) {
 		ret = display_get_timing(state);
+		if (!ret)
+			conn_state->bpc = panel_state->panel->bpc;
+#if defined(CONFIG_I2C_EDID)
+		if (ret < 0 && conn_funcs->get_edid) {
+			rockchip_panel_prepare(panel_state->panel);
+
+			ret = conn_funcs->get_edid(state);
+			if (!ret) {
+				ret = edid_get_drm_mode((void *)&conn_state->edid,
+							sizeof(conn_state->edid),
+							mode, &bpc);
+				if (!ret) {
+					conn_state->bpc = bpc;
+					edid_print_info((void *)&conn_state->edid);
+				}
+			}
+		}
+#endif
 	} else if (conn_state->bridge) {
 		ret = video_bridge_read_edid(conn_state->bridge->dev,
 					     conn_state->edid, EDID_SIZE);
@@ -621,8 +625,10 @@ static int display_init(struct display_state *state)
 #if defined(CONFIG_I2C_EDID)
 			ret = edid_get_drm_mode(conn_state->edid, ret, mode,
 						&bpc);
-			if (!ret)
+			if (!ret) {
+				conn_state->bpc = bpc;
 				edid_print_info((void *)&conn_state->edid);
+			}
 #endif
 		} else {
 			ret = video_bridge_get_timing(conn_state->bridge->dev);
@@ -636,8 +642,10 @@ static int display_init(struct display_state *state)
 			ret = edid_get_drm_mode((void *)&conn_state->edid,
 						sizeof(conn_state->edid), mode,
 						&bpc);
-			if (!ret)
+			if (!ret) {
+				conn_state->bpc = bpc;
 				edid_print_info((void *)&conn_state->edid);
+			}
 		}
 #endif
 	}
@@ -645,7 +653,21 @@ static int display_init(struct display_state *state)
 	if (ret)
 		goto deinit;
 
+	printf("Detailed mode clock %u kHz, flags[%x]\n"
+	       "    H: %04d %04d %04d %04d\n"
+	       "    V: %04d %04d %04d %04d\n"
+	       "bus_format: %x\n",
+	       mode->clock, mode->flags,
+	       mode->hdisplay, mode->hsync_start,
+	       mode->hsync_end, mode->htotal,
+	       mode->vdisplay, mode->vsync_start,
+	       mode->vsync_end, mode->vtotal,
+	       conn_state->bus_format);
+
 	drm_mode_set_crtcinfo(mode, CRTC_INTERLACE_HALVE_V);
+
+	if (conn_state->bridge)
+		rockchip_bridge_mode_set(conn_state->bridge, &conn_state->mode);
 
 	if (crtc_funcs->init) {
 		ret = crtc_funcs->init(state);
@@ -1445,7 +1467,7 @@ static int rockchip_display_probe(struct udevice *dev)
 	}
 
 	if (list_empty(&rockchip_display_list)) {
-		printf("Failed to found available display route\n");
+		debug("Failed to found available display route\n");
 		return -ENODEV;
 	}
 
@@ -1472,12 +1494,13 @@ void rockchip_display_fixup(void *blob)
 	const struct device_node *np;
 	const char *path;
 
-	if (!get_display_size())
-		return;
-
 	if (fdt_node_offset_by_compatible(blob, 0, "rockchip,drm-logo") >= 0) {
 		list_for_each_entry(s, &rockchip_display_list, head)
 			load_bmp_logo(&s->logo, s->klogo_name);
+
+		if (!get_display_size())
+			return;
+
 		offset = fdt_update_reserved_memory(blob, "rockchip,drm-logo",
 						    (u64)memory_start,
 						    (u64)get_display_size());

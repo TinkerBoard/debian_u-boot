@@ -69,9 +69,9 @@ static void rsa_convert_big_endian(uint32_t *dst, const uint32_t *src, int len)
 		dst[i] = fdt32_to_cpu(src[len - 1 - i]);
 }
 
-static int hw_crypto_rsa(struct key_prop *prop, const uint8_t *sig,
-			 const uint32_t sig_len, const uint32_t key_len,
-			 uint8_t *output)
+static int rsa_mod_exp_hw(struct key_prop *prop, const uint8_t *sig,
+			  const uint32_t sig_len, const uint32_t key_len,
+			  uint8_t *output)
 {
 	struct udevice *dev;
 	uint8_t sig_reverse[sig_len];
@@ -127,28 +127,244 @@ out:
 #endif
 #endif
 
+int padding_pkcs_15_verify(struct image_sign_info *info,
+			   uint8_t *msg, int msg_len,
+			   const uint8_t *hash, int hash_len)
+{
+	struct checksum_algo *checksum = info->checksum;
+	int ret, pad_len = msg_len - checksum->checksum_len;
+
+	/* Check pkcs1.5 padding bytes. */
+	ret = rsa_verify_padding(msg, pad_len, checksum);
+	if (ret) {
+		debug("In RSAVerify(): Padding check failed!\n");
+		return -EINVAL;
+	}
+
+	/* Check hash. */
+	if (memcmp((uint8_t *)msg + pad_len, hash, msg_len - pad_len)) {
+		debug("In RSAVerify(): Hash check failed!\n");
+		return -EACCES;
+	}
+
+	return 0;
+}
+
+#ifdef CONFIG_FIT_ENABLE_RSASSA_PSS_SUPPORT
+static void u32_i2osp(uint32_t val, uint8_t *buf)
+{
+	buf[0] = (uint8_t)((val >> 24) & 0xff);
+	buf[1] = (uint8_t)((val >> 16) & 0xff);
+	buf[2] = (uint8_t)((val >>  8) & 0xff);
+	buf[3] = (uint8_t)((val >>  0) & 0xff);
+}
+
+/**
+ * mask_generation_function1() - generate an octet string
+ *
+ * Generate an octet string used to check rsa signature.
+ * It use an input octet string and a hash function.
+ *
+ * @checksum:	A Hash function
+ * @seed:	Specifies an input variable octet string
+ * @seed_len:	Size of the input octet string
+ * @output:	Specifies the output octet string
+ * @output_len:	Size of the output octet string
+ * @return 0 if the octet string was correctly generated, others on error
+ */
+static int mask_generation_function1(struct checksum_algo *checksum,
+				     uint8_t *seed, int seed_len,
+				     uint8_t *output, int output_len)
+{
+	struct image_region region[2];
+	int ret = 0, i, i_output = 0, region_count = 2;
+	uint32_t counter = 0;
+	uint8_t buf_counter[4], *tmp;
+	int hash_len = checksum->checksum_len;
+
+	memset(output, 0, output_len);
+
+	region[0].data = seed;
+	region[0].size = seed_len;
+	region[1].data = &buf_counter[0];
+	region[1].size = 4;
+
+	tmp = malloc(hash_len);
+	if (!tmp) {
+		debug("%s: can't allocate array tmp\n", __func__);
+		ret = -ENOMEM;
+		goto out;
+	}
+
+	while (i_output < output_len) {
+		u32_i2osp(counter, &buf_counter[0]);
+
+		ret = checksum->calculate(checksum->name,
+					  region, region_count,
+					  tmp);
+		if (ret < 0) {
+			debug("%s: Error in checksum calculation\n", __func__);
+			goto out;
+		}
+
+		i = 0;
+		while ((i_output < output_len) && (i < hash_len)) {
+			output[i_output] = tmp[i];
+			i_output++;
+			i++;
+		}
+
+		counter++;
+	}
+
+out:
+	free(tmp);
+
+	return ret;
+}
+
+static int compute_hash_prime(struct checksum_algo *checksum,
+			      uint8_t *pad, int pad_len,
+			      uint8_t *hash, int hash_len,
+			      uint8_t *salt, int salt_len,
+			      uint8_t *hprime)
+{
+	struct image_region region[3];
+	int ret, region_count = 3;
+
+	region[0].data = pad;
+	region[0].size = pad_len;
+	region[1].data = hash;
+	region[1].size = hash_len;
+	region[2].data = salt;
+	region[2].size = salt_len;
+
+	ret = checksum->calculate(checksum->name, region, region_count, hprime);
+	if (ret < 0) {
+		debug("%s: Error in checksum calculation\n", __func__);
+		goto out;
+	}
+
+out:
+	return ret;
+}
+
+int padding_pss_verify(struct image_sign_info *info,
+		       uint8_t *msg, int msg_len,
+		       const uint8_t *hash, int hash_len)
+{
+	uint8_t *masked_db = NULL;
+	int masked_db_len = msg_len - hash_len - 1;
+	uint8_t *h = NULL, *hprime = NULL;
+	int h_len = hash_len;
+	uint8_t *db_mask = NULL;
+	int db_mask_len = masked_db_len;
+	uint8_t *db = NULL, *salt = NULL;
+	int db_len = masked_db_len, salt_len = msg_len - hash_len - 2;
+	uint8_t pad_zero[8] = { 0 };
+	int ret, i, leftmost_bits = 1;
+	uint8_t leftmost_mask;
+	struct checksum_algo *checksum = info->checksum;
+
+	/* first, allocate everything */
+	masked_db = malloc(masked_db_len);
+	h = malloc(h_len);
+	db_mask = malloc(db_mask_len);
+	db = malloc(db_len);
+	salt = malloc(salt_len);
+	hprime = malloc(hash_len);
+	if (!masked_db || !h || !db_mask || !db || !salt || !hprime) {
+		printf("%s: can't allocate some buffer\n", __func__);
+		ret = -ENOMEM;
+		goto out;
+	}
+
+	/* step 4: check if the last byte is 0xbc */
+	if (msg[msg_len - 1] != 0xbc) {
+		printf("%s: invalid pss padding (0xbc is missing)\n", __func__);
+		ret = -EINVAL;
+		goto out;
+	}
+
+	/* step 5 */
+	memcpy(masked_db, msg, masked_db_len);
+	memcpy(h, msg + masked_db_len, h_len);
+
+	/* step 6 */
+	leftmost_mask = (0xff >> (8 - leftmost_bits)) << (8 - leftmost_bits);
+	if (masked_db[0] & leftmost_mask) {
+		printf("%s: invalid pss padding ", __func__);
+		printf("(leftmost bit of maskedDB not zero)\n");
+		ret = -EINVAL;
+		goto out;
+	}
+
+	/* step 7 */
+	mask_generation_function1(checksum, h, h_len, db_mask, db_mask_len);
+
+	/* step 8 */
+	for (i = 0; i < db_len; i++)
+		db[i] = masked_db[i] ^ db_mask[i];
+
+	/* step 9 */
+	db[0] &= 0xff >> leftmost_bits;
+
+	/* step 10 */
+	if (db[0] != 0x01) {
+		printf("%s: invalid pss padding ", __func__);
+		printf("(leftmost byte of db isn't 0x01)\n");
+		ret = EINVAL;
+		goto out;
+	}
+
+	/* step 11 */
+	memcpy(salt, &db[1], salt_len);
+
+	/* step 12 & 13 */
+	compute_hash_prime(checksum, pad_zero, 8,
+			   (uint8_t *)hash, hash_len,
+			   salt, salt_len, hprime);
+
+	/* step 14 */
+	ret = memcmp(h, hprime, hash_len);
+
+out:
+	free(hprime);
+	free(salt);
+	free(db);
+	free(db_mask);
+	free(h);
+	free(masked_db);
+
+	return ret;
+}
+#endif
+
 /**
  * rsa_verify_key() - Verify a signature against some data using RSA Key
  *
  * Verify a RSA PKCS1.5 signature against an expected hash using
  * the RSA Key properties in prop structure.
  *
+ * @info:	Specifies key and FIT information
  * @prop:	Specifies key
  * @sig:	Signature
  * @sig_len:	Number of bytes in signature
  * @hash:	Pointer to the expected hash
  * @key_len:	Number of bytes in rsa key
- * @algo:	Checksum algo structure having information on DER encoding etc.
  * @return 0 if verified, -ve on error
  */
-static int rsa_verify_key(struct key_prop *prop, const uint8_t *sig,
+static int rsa_verify_key(struct image_sign_info *info,
+			  struct key_prop *prop, const uint8_t *sig,
 			  const uint32_t sig_len, const uint8_t *hash,
-			  const uint32_t key_len, struct checksum_algo *algo)
+			  const uint32_t key_len)
 {
-	int pad_len;
 	int ret;
+	struct checksum_algo *checksum = info->checksum;
+	struct padding_algo *padding = info->padding;
+	int hash_len = checksum->checksum_len;
 
-	if (!prop || !sig || !hash || !algo)
+	if (!prop || !sig || !hash || !checksum)
 		return -EIO;
 
 	if (sig_len != (prop->num_bits / 8)) {
@@ -156,7 +372,7 @@ static int rsa_verify_key(struct key_prop *prop, const uint8_t *sig,
 		return -EINVAL;
 	}
 
-	debug("Checksum algorithm: %s", algo->name);
+	debug("Checksum algorithm: %s", checksum->name);
 
 	/* Sanity check for stack size */
 	if (sig_len > RSA_MAX_SIG_BITS / 8) {
@@ -169,7 +385,7 @@ static int rsa_verify_key(struct key_prop *prop, const uint8_t *sig,
 
 #if !defined(USE_HOSTCC)
 #if CONFIG_IS_ENABLED(FIT_HW_CRYPTO)
-	ret = hw_crypto_rsa(prop, sig, sig_len, key_len, buf);
+	ret = rsa_mod_exp_hw(prop, sig, sig_len, key_len, buf);
 #else
 	struct udevice *mod_exp_dev;
 
@@ -189,19 +405,10 @@ static int rsa_verify_key(struct key_prop *prop, const uint8_t *sig,
 		return ret;
 	}
 
-	pad_len = key_len - algo->checksum_len;
-
-	/* Check pkcs1.5 padding bytes. */
-	ret = rsa_verify_padding(buf, pad_len, algo);
+	ret = padding->verify(info, buf, key_len, hash, hash_len);
 	if (ret) {
-		debug("In RSAVerify(): Padding check failed!\n");
-		return -EINVAL;
-	}
-
-	/* Check hash. */
-	if (memcmp((uint8_t *)buf + pad_len, hash, sig_len - pad_len)) {
-		debug("In RSAVerify(): Hash check failed!\n");
-		return -EACCES;
+		debug("In RSAVerify(): padding check failed!\n");
+		return ret;
 	}
 
 	return 0;
@@ -256,6 +463,8 @@ static int rsa_verify_with_keynode(struct image_sign_info *info,
 		return -EFAULT;
 	}
 
+#if !defined(USE_HOSTCC)
+#if CONFIG_IS_ENABLED(FIT_HW_CRYPTO)
 #ifdef CONFIG_ROCKCHIP_CRYPTO_V1
 	prop.factor_c = fdt_getprop(blob, node, "rsa,c", NULL);
 	if (!prop.factor_c)
@@ -265,8 +474,10 @@ static int rsa_verify_with_keynode(struct image_sign_info *info,
 	if (!prop.factor_np)
 		return -EFAULT;
 #endif
-	ret = rsa_verify_key(&prop, sig, sig_len, hash,
-			     info->crypto->key_len, info->checksum);
+#endif
+#endif
+	ret = rsa_verify_key(info, &prop, sig, sig_len, hash,
+			     info->crypto->key_len);
 
 	return ret;
 }
