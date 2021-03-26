@@ -125,7 +125,7 @@ __weak int mmc_get_env_addr(struct mmc *mmc, int copy, u32 *env_addr)
 
 __weak int mmc_get_env_dev(void)
 {
-	return CONFIG_SYS_MMC_ENV_DEV;
+	return env_get_ulong("devnum", 10, 0);
 }
 
 #ifdef CONFIG_SYS_MMC_ENV_PART
