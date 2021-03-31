@@ -74,7 +74,7 @@ static int ums_init(const char *devtype, const char *devnums_part_str)
 		partnum = blk_get_device_part_str(devtype, devnum_part_str,
 					&block_dev, &info, 1);
 
-		if (partnum < 0)
+		if (partnum < 0 && strchr(devnum_part_str, ':'))
 			goto cleanup;
 
 		/* Check if the argument is in legacy format. If yes,
