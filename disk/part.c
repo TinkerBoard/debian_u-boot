@@ -610,6 +610,7 @@ int blk_get_device_part_str(const char *ifname, const char *dev_part_str,
 		ret = part_get_info(*dev_desc, part, info);
 		if (ret) {
 			printf("** Invalid partition %d **\n", part);
+			ret = 0;
 			goto cleanup;
 		}
 	} else {
