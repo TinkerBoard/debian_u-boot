@@ -13,19 +13,6 @@
 
 DECLARE_GLOBAL_DATA_PTR;
 
-enum project_id {
-	TinkerBoardS = 0,
-	TinkerBoardS_HV = 1,
-	TinkerBoardR_BR = 4,
-	TinkerBoard  = 7,
-};
-
-enum pcb_id {
-	SR,
-	ER,
-	PR,
-};
-
 /*
 *
 * usb current limit : GPIO6_A6 (H:unlock, L:lock)
@@ -81,16 +68,6 @@ void rk3288_maskrom_disable(bool enable_emmc)
 int check_force_enter_ums_mode(void)
 {
 	int tmp;
-	enum pcb_id pcbid;
-	enum project_id projectid;
-
-	// GPIO2_A3/GPIO2_A2/GPIO2_A1 pull up enable
-	tmp = readl(RKIO_GRF_PHYS + GRF_GPIO2A_P);
-	writel((tmp&~(0x03F<<2)) | 0x3F<<(16 + 2) | 0x15<<2, RKIO_GRF_PHYS + GRF_GPIO2A_P);
-
-	// GPIO2_A3/GPIO2_A2/GPIO2_A1/GPIO2_B2/GPIO2_B1/GPIO2_B0 set to input
-	tmp = readl(RKIO_GPIO2_PHYS + GPIO_SWPORT_DDR);
-	writel(tmp & ~(0x70E), RKIO_GPIO2_PHYS + GPIO_SWPORT_DDR);
 
 	// GPIO6_A5 pull up/down disable
 	tmp = readl(RKIO_GRF_PHYS + GRF_GPIO6A_P);
@@ -102,25 +79,15 @@ int check_force_enter_ums_mode(void)
 
 	mdelay(10);
 
-	// read GPIO2_A3/GPIO2_A2/GPIO2_A1 value
-	projectid = (readl(RKIO_GPIO2_PHYS + GPIO_EXT_PORT) & 0x0E) >>1;
-
-	// read GPIO2_B2/GPIO2_B1/GPIO2_B0 value
-	pcbid = (readl(RKIO_GPIO2_PHYS + GPIO_EXT_PORT) & 0x700) >> 8;
-
-	// only TinkerBoard S PR stage PCB & TinkerBoard S/HV has this function
-	if(((projectid == TinkerBoardS) && (pcbid >= ER))
-	   || (projectid == TinkerBoardS_HV)){
-		printf("PC event = 0x%x\n", readl(RKIO_GPIO6_PHYS + GPIO_EXT_PORT)&0x20);
-		if((readl(RKIO_GPIO6_PHYS + GPIO_EXT_PORT)&0x20)==0x20) {
-			// SDP detected, enable EMMC and unlock usb current limit
-			printf("usb connected to SDP, force enter ums mode\n");
-			rk3288_maskrom_disable(true);
-			usb_current_limit_unlock(true);
-			return 1;
-		} else {
-			usb_current_limit_unlock(false);
-		}
+	printf("PC event = 0x%x\n", readl(RKIO_GPIO6_PHYS + GPIO_EXT_PORT)&0x20);
+	if((readl(RKIO_GPIO6_PHYS + GPIO_EXT_PORT)&0x20)==0x20) {
+		// SDP detected, enable EMMC and unlock usb current limit
+		printf("usb connected to SDP, force enter ums mode\n");
+		rk3288_maskrom_disable(true);
+		usb_current_limit_unlock(true);
+		return 1;
+	} else {
+		usb_current_limit_unlock(false);
 	}
 	return 0;
 }

@@ -127,8 +127,10 @@ static int ums_init(const char *devtype, const char *devnums_part_str)
 cleanup:
 	free(s);
 
-	if (ret < 0)
+	if (ret < 0) {
 		ums_fini();
+		usb_current_limit_unlock(false);
+	}
 
 	return ret;
 }
