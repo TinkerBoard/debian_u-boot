@@ -47,6 +47,20 @@ static void boot_devtype_init(void)
 	if (done)
 		return;
 
+#if defined(CONFIG_SCSI) && defined(CONFIG_CMD_SCSI) && defined(CONFIG_AHCI)
+	ret = run_command("scsi scan", 0);
+	if (!ret) {
+		ret = run_command("scsi dev 0", 0);
+		if (!ret) {
+			devtype = "scsi";
+			devnum = "0";
+			env_set("devtype", devtype);
+			env_set("devnum", devnum);
+			goto finish;
+		}
+	}
+#endif
+
 	/* High priority: get bootdev from atags */
 #ifdef CONFIG_ROCKCHIP_PRELOADER_ATAGS
 	ret = param_parse_bootdev(&devtype, &devnum);
@@ -55,7 +69,7 @@ static void boot_devtype_init(void)
 		env_set("devtype", devtype);
 		env_set("devnum", devnum);
 
-#ifdef CONFIG_DM_MMC
+#ifdef CONFIG_MMC
 		if (!strcmp("mmc", devtype))
 			mmc_initialize(gd->bd);
 #endif
@@ -74,7 +88,7 @@ static void boot_devtype_init(void)
 #endif
 
 	/* Low priority: if not get bootdev by atags, scan all possible */
-#ifdef CONFIG_DM_MMC
+#ifdef CONFIG_MMC
 	mmc_initialize(gd->bd);
 #endif
 	ret = run_command_list(devtype_num_set, -1, 0);
@@ -130,6 +144,9 @@ static int get_bootdev_type(void)
 	} else if (!strcmp(devtype, "mtd")) {
 		type = IF_TYPE_MTD;
 		boot_media = "mtd";
+	} else if (!strcmp(devtype, "scsi")) {
+		type = IF_TYPE_SCSI;
+		boot_media = "scsi";
 	} else {
 		/* Add new to support */
 	}
@@ -303,7 +320,8 @@ void setup_download_mode(void)
 	 * At the most time, USB is enabled and this feature is not applied.
 	 */
 	if (rockchip_dnl_key_pressed() || is_hotkey(HK_ROCKUSB_DNL)) {
-		printf("download key pressed... ");
+		printf("download %skey pressed... ",
+		       is_hotkey(HK_ROCKUSB_DNL) ? "hot" : "");
 #ifdef CONFIG_CMD_ROCKUSB
 		vbus = rockchip_u2phy_vbus_detect();
 #endif
@@ -449,8 +467,6 @@ static int rockchip_read_distro_dtb(void *fdt_addr)
 	char devnum_part[12];
 	char fdt_hex_str[19];
 	char *fs_argv[5];
-	int size;
-	int ret;
 
 	if (!rockchip_get_bootdev() || !fdt_addr)
 		return -ENODEV;

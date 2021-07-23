@@ -23,6 +23,7 @@ DECLARE_GLOBAL_DATA_PTR;
 #if CONFIG_IS_ENABLED(FIT_IMAGE_POST_PROCESS)
 
 #define FIT_UNCOMP_HASH_NODENAME	"digest"
+#if CONFIG_IS_ENABLED(MISC_DECOMPRESS) || CONFIG_IS_ENABLED(GZIP)
 static int fit_image_check_uncomp_hash(const void *fit, int parent_noffset,
 				       const void *data, size_t size)
 {
@@ -42,7 +43,6 @@ static int fit_image_check_uncomp_hash(const void *fit, int parent_noffset,
 	return 0;
 }
 
-#if CONFIG_IS_ENABLED(MISC_DECOMPRESS) || CONFIG_IS_ENABLED(GZIP)
 static int fit_gunzip_image(void *fit, int node, ulong *load_addr,
 			    ulong **src_addr, size_t *src_len)
 {
@@ -73,7 +73,7 @@ static int fit_gunzip_image(void *fit, int node, ulong *load_addr,
 				      (ulong)(*src_addr), (ulong)(*src_len),
 				      DECOM_GZIP, false, &len);
 #else
-	ret = gunzip((void *)(*load_addr), ALIGN(len, SZ_1M),
+	ret = gunzip((void *)(*load_addr), ALIGN(len, FIT_MAX_SPL_IMAGE_SZ),
 		     (void *)(*src_addr), (void *)(&len));
 #endif
 	if (ret) {
@@ -164,7 +164,7 @@ int fit_board_verify_required_sigs(void)
 	uint8_t vboot = 0;
 
 #ifdef CONFIG_SPL_BUILD
-#if defined(CONFIG_SPL_ROCKCHIP_SECURE_OTP) || \
+#if defined(CONFIG_SPL_ROCKCHIP_SECURE_OTP_V1) || \
     defined(CONFIG_SPL_ROCKCHIP_SECURE_OTP_V2)
 	struct udevice *dev;
 
@@ -172,7 +172,7 @@ int fit_board_verify_required_sigs(void)
 	if (!dev)
 		return 1;
 
-	if (misc_otp_read(dev, 0, &vboot, 1)) {
+	if (misc_otp_read(dev, OTP_SECURE_BOOT_ENABLE_ADDR, &vboot, 1)) {
 		printf("Can't read verified-boot flag\n");
 		return 1;
 	}

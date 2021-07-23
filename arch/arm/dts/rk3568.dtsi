@@ -4,6 +4,7 @@
  */
 
 #include <dt-bindings/clock/rk3568-cru.h>
+#include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 #include <dt-bindings/interrupt-controller/irq.h>
 #include <dt-bindings/pinctrl/rockchip.h>
@@ -146,7 +147,7 @@
 		status = "disabled";
 	};
 
-	psci {
+	psci: psci {
 		compatible = "arm,psci-1.0";
 		method = "smc";
 	};
@@ -191,7 +192,7 @@
 		#clock-cells = <0>;
 	};
 
-	gmac1_clkini: external-gmac1-clock {
+	gmac1_clkin: external-gmac1-clock {
 		compatible = "fixed-clock";
 		clock-frequency = <125000000>;
 		clock-output-names = "gmac1_clkin";
@@ -1818,6 +1819,8 @@
 		fifo-depth = <0x100>;
 		resets = <&cru SRST_SDMMC0>;
 		reset-names = "reset";
+		pinctrl-names = "default";
+		pinctrl-0 = <&sdmmc0_clk &sdmmc0_cmd &sdmmc0_det &sdmmc0_bus4>;
 		status = "disabled";
 	};
 
@@ -1850,6 +1853,7 @@
 	sdhci: sdhci@fe310000 {
 		compatible = "rockchip,dwcmshc-sdhci", "snps,dwcmshc-sdhci";
 		reg = <0x0 0xfe310000 0x0 0x10000>;
+		max-frequency = <200000000>;
 		interrupts = <GIC_SPI 19 IRQ_TYPE_LEVEL_HIGH>;
 		assigned-clocks = <&cru BCLK_EMMC>, <&cru TCLK_EMMC>;
 		assigned-clock-rates = <200000000>, <24000000>;
@@ -1877,6 +1881,20 @@
 		clock-names = "sclk_crypto", "apkclk_crypto";
 		clock-frequency = <150000000>, <300000000>;
 		status = "disabled";
+	};
+
+	rng: rng@fe388000 {
+		compatible = "rockchip,cryptov2-rng";
+		reg = <0x0 0xfe388000 0x0 0x2000>;
+		status = "disabled";
+	};
+
+	secure_otp: secure_otp@fe3a0000 {
+		compatible = "rockchip,rk3568-secure-otp";
+		reg = <0x0 0xfe3a0000 0x0 0x4000>;
+		secure_conf = <0xfdd18008>;
+		mask_addr = <0xfe880000>;
+		cru_rst_addr = <0xfdd20470>;
 	};
 
 	i2s0_8ch: i2s@fe400000 {
@@ -2165,6 +2183,8 @@
 		clocks = <&cru TCLK_WDT_NS>, <&cru PCLK_WDT_NS>;
 		clock-names = "tclk", "pclk";
 		interrupts = <GIC_SPI 149 IRQ_TYPE_LEVEL_HIGH>;
+		resets = <&cru SRST_T_WDT_NS>;
+		reset-names = "reset";
 		status = "okay";
 	};
 

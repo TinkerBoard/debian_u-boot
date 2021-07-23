@@ -35,6 +35,10 @@
 #define RK3328_GRF_SOC_CON3              0x040c
 #define RK3328_GRF_SOC_CON4              0x0410
 
+#define RK3568_GRF_VO_CON1               0x0364
+#define RK3568_HDMI_SDAIN_MSK            ((1 << 15) | (1 << (15 + 16)))
+#define RK3568_HDMI_SCLIN_MSK            ((1 << 14) | (1 << (14 + 16)))
+
 static const struct dw_hdmi_mpll_config rockchip_mpll_cfg[] = {
 	{
 		30666000, {
@@ -178,6 +182,7 @@ static const struct dw_hdmi_phy_config rockchip_phy_config[] = {
 	{ 165000000, 0x802b, 0x0004, 0x0209},
 	{ 297000000, 0x8039, 0x0005, 0x028d},
 	{ 594000000, 0x8039, 0x0000, 0x019d},
+	{ ~0UL,	     0x0000, 0x0000, 0x0000},
 	{ ~0UL,	     0x0000, 0x0000, 0x0000}
 };
 
@@ -318,14 +323,17 @@ static unsigned int drm_rk_select_color(struct hdmi_edid_data *edid_data,
 }
 
 void drm_rk_selete_output(struct hdmi_edid_data *edid_data,
+			  struct connector_state *conn_state,
 			  unsigned int *bus_format,
 			  struct overscan *overscan,
 			  enum dw_hdmi_devtype dev_type)
 {
 	int ret, i, screen_size;
 	struct base_disp_info base_parameter;
+	struct base2_disp_info *base2_parameter = conn_state->disp_info;
 	const struct base_overscan *scan;
 	struct base_screen_info *screen_info = NULL;
+	struct base2_screen_info *screen_info2 = NULL;
 	int max_scan = 100;
 	int min_scan = 51;
 	struct blk_desc *dev_desc;
@@ -342,26 +350,62 @@ void drm_rk_selete_output(struct hdmi_edid_data *edid_data,
 	else
 		*bus_format = MEDIA_BUS_FMT_YUV8_1X24;
 
-	dev_desc = rockchip_get_bootdev();
-	if (!dev_desc) {
-		printf("%s: Could not find device\n", __func__);
-		return;
-	}
+	if (!base2_parameter) {
+		dev_desc = rockchip_get_bootdev();
+		if (!dev_desc) {
+			printf("%s: Could not find device\n", __func__);
+			return;
+		}
 
-	if (part_get_info_by_name(dev_desc, "baseparameter", &part_info) < 0) {
-		printf("Could not find baseparameter partition\n");
-		return;
-	}
+		ret = part_get_info_by_name(dev_desc, "baseparameter",
+					    &part_info);
+		if (ret < 0) {
+			printf("Could not find baseparameter partition\n");
+			return;
+		}
 
-	ret = blk_dread(dev_desc, part_info.start, 1,
-			(void *)baseparameter_buf);
-	if (ret < 0) {
-		printf("read baseparameter failed\n");
-		return;
-	}
+		ret = blk_dread(dev_desc, part_info.start, 1,
+				(void *)baseparameter_buf);
+		if (ret < 0) {
+			printf("read baseparameter failed\n");
+			return;
+		}
 
-	memcpy(&base_parameter, baseparameter_buf, sizeof(base_parameter));
-	scan = &base_parameter.scan;
+		memcpy(&base_parameter, baseparameter_buf,
+		       sizeof(base_parameter));
+		scan = &base_parameter.scan;
+
+		screen_size = sizeof(base_parameter.screen_list) /
+			sizeof(base_parameter.screen_list[0]);
+
+		for (i = 0; i < screen_size; i++) {
+			if (base_parameter.screen_list[i].type ==
+			    DRM_MODE_CONNECTOR_HDMIA) {
+				screen_info = &base_parameter.screen_list[i];
+				break;
+			}
+		}
+	} else {
+		scan = &base2_parameter->overscan_info;
+		screen_size = sizeof(base2_parameter->screen_info) /
+			sizeof(base2_parameter->screen_info[0]);
+
+		for (i = 0; i < screen_size; i++) {
+			if (base2_parameter->screen_info[i].type ==
+			    DRM_MODE_CONNECTOR_HDMIA) {
+				screen_info2 =
+					&base2_parameter->screen_info[i];
+				break;
+			}
+		}
+		screen_info = malloc(sizeof(*screen_info));
+
+		screen_info->type = screen_info2->type;
+		screen_info->mode = screen_info2->resolution;
+		screen_info->format = screen_info2->format;
+		screen_info->depth = screen_info2->depthc;
+		screen_info->feature = screen_info2->feature;
+	}
 
 	if (scan->leftscale < min_scan && scan->leftscale > 0)
 		overscan->left_margin = min_scan;
@@ -383,16 +427,7 @@ void drm_rk_selete_output(struct hdmi_edid_data *edid_data,
 	else if (scan->bottomscale < max_scan && scan->bottomscale > 0)
 		overscan->bottom_margin = scan->bottomscale;
 
-	screen_size = sizeof(base_parameter.screen_list) /
-		sizeof(base_parameter.screen_list[0]);
 
-	for (i = 0; i < screen_size; i++) {
-		if (base_parameter.screen_list[i].type ==
-		    DRM_MODE_CONNECTOR_HDMIA) {
-			screen_info = &base_parameter.screen_list[i];
-			break;
-		}
-	}
 
 	if (screen_info)
 		printf("base_parameter.mode:%dx%d\n",
@@ -423,6 +458,10 @@ void dw_hdmi_set_iomux(void *grf, int dev_type)
 		writel(RK3228_IO_3V_DOMAIN, grf + RK3228_GRF_SOC_CON6);
 		writel(RK3228_IO_DDC_IN_MSK, grf + RK3228_GRF_SOC_CON2);
 		break;
+	case RK3568_HDMI:
+		writel(RK3568_HDMI_SDAIN_MSK | RK3568_HDMI_SCLIN_MSK,
+		       grf + RK3568_GRF_VO_CON1);
+		break;
 	default:
 		break;
 	}
@@ -436,6 +475,7 @@ static const struct dw_hdmi_phy_ops inno_dw_hdmi_phy_ops = {
 };
 
 static const struct rockchip_connector_funcs rockchip_dw_hdmi_funcs = {
+	.pre_init = rockchip_dw_hdmi_pre_init,
 	.init = rockchip_dw_hdmi_init,
 	.deinit = rockchip_dw_hdmi_deinit,
 	.prepare = rockchip_dw_hdmi_prepare,
@@ -489,10 +529,25 @@ const struct dw_hdmi_plat_data rk3399_hdmi_drv_data = {
 	.dev_type   = RK3399_HDMI,
 };
 
+const struct dw_hdmi_plat_data rk3568_hdmi_drv_data = {
+	.vop_sel_bit = 0,
+	.grf_vop_sel_reg = 0,
+	.mpll_cfg   = rockchip_mpll_cfg,
+	.cur_ctr    = rockchip_cur_ctr,
+	.phy_config = rockchip_phy_config,
+	.mpll_cfg_420 = rockchip_mpll_cfg_420,
+	.dev_type   = RK3568_HDMI,
+};
+
 static int rockchip_dw_hdmi_probe(struct udevice *dev)
 {
 	return 0;
 }
+
+static const struct rockchip_connector rk3568_dw_hdmi_data = {
+	.funcs = &rockchip_dw_hdmi_funcs,
+	.data = &rk3568_hdmi_drv_data,
+};
 
 static const struct rockchip_connector rk3399_dw_hdmi_data = {
 	.funcs = &rockchip_dw_hdmi_funcs,
@@ -521,6 +576,9 @@ static const struct rockchip_connector rk3228_dw_hdmi_data = {
 
 static const struct udevice_id rockchip_dw_hdmi_ids[] = {
 	{
+	 .compatible = "rockchip,rk3568-dw-hdmi",
+	 .data = (ulong)&rk3568_dw_hdmi_data,
+	}, {
 	 .compatible = "rockchip,rk3399-dw-hdmi",
 	 .data = (ulong)&rk3399_dw_hdmi_data,
 	}, {

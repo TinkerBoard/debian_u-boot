@@ -24,6 +24,7 @@
 #include <android_avb/avb_atx_validate.h>
 #include <android_avb/rk_avb_ops_user.h>
 #include <boot_rkimg.h>
+#include <u-boot/sha256.h>
 #include <asm/arch/rk_atags.h>
 
 /* rk used */
@@ -120,7 +121,9 @@ int rk_avb_read_flash_lock_state(uint8_t *flash_lock_state)
 
 	return ret;
 #else
-	return -1;
+	*flash_lock_state = 1;
+
+	return 0;
 #endif
 }
 
@@ -307,7 +310,6 @@ int rk_avb_read_all_rollback_index(char *buffer)
 	uint64_t stored_rollback_index = 0;
 	AvbIOResult io_ret;
 	char temp[ROLLBACK_MAX_SIZE] = {0};
-	int n;
 
 	ops = avb_ops_user_new();
 	if (ops == NULL) {
@@ -315,19 +317,17 @@ int rk_avb_read_all_rollback_index(char *buffer)
 		return -1;
 	}
 
-	for (n = 0; n < AVB_MAX_NUMBER_OF_ROLLBACK_INDEX_LOCATIONS; n++) {
-		io_ret = ops->read_rollback_index(
-			ops, n, &stored_rollback_index);
-		if (io_ret != AVB_IO_RESULT_OK)
-			goto out;
-		snprintf(temp, sizeof(int) + 1, "%d", n);
-		strncat(buffer, temp, ROLLBACK_MAX_SIZE);
-		strncat(buffer, ":", 1);
-		snprintf(temp, sizeof(uint64_t) + 1, "%lld",
-			 stored_rollback_index);
-		strncat(buffer, temp, ROLLBACK_MAX_SIZE);
-		strncat(buffer, ",", 1);
-	}
+	/* Actually the rollback_index_location 0 is used. */
+	io_ret = ops->read_rollback_index(ops, 0, &stored_rollback_index);
+	if (io_ret != AVB_IO_RESULT_OK)
+		goto out;
+	snprintf(temp, sizeof(int) + 1, "%d", 0);
+	strncat(buffer, temp, ROLLBACK_MAX_SIZE);
+	strncat(buffer, ":", 1);
+	snprintf(temp, sizeof(uint64_t) + 1, "%lld",
+		 stored_rollback_index);
+	strncat(buffer, temp, ROLLBACK_MAX_SIZE);
+	strncat(buffer, ",", 1);
 
 	io_ret =
 		ops->read_rollback_index(ops,
@@ -503,11 +503,11 @@ void rk_avb_get_at_vboot_state(char *buf)
 	memset(rollback_indices, 0, VBOOT_STATE_SIZE);
 	if (rk_avb_read_all_rollback_index(rollback_indices))
 		avb_error("Can not read avb_min_ver!");
-
+#ifdef CONFIG_SUPPORT_EMMC_RPMB
 	/* bootloader-min-versions */
 	if (rk_avb_get_bootloader_min_version(min_versions))
 		avb_error("Call rk_avb_get_bootloader_min_version error!");
-
+#endif
 	n = snprintf(buf, VBOOT_STATE_SIZE - 1,
 		     "avb-perm-attr-set=%s\n"
 		     "avb-locked=%s\n"
@@ -662,3 +662,150 @@ int rk_avb_init_ab_metadata(void)
 
 	return 0;
 }
+
+#define AT_PERM_ATTR_FUSE		1
+#define AT_PERM_ATTR_CER_FUSE		2
+#define AT_LOCK_VBOOT			3
+
+int rk_avb_write_perm_attr(u16 id, void *pbuf, u16 size)
+{
+	uint8_t lock_state;
+#ifndef CONFIG_ROCKCHIP_PRELOADER_PUB_KEY
+	sha256_context ctx;
+	uint8_t digest[SHA256_SUM_LEN] = {0};
+	uint8_t digest_temp[SHA256_SUM_LEN] = {0};
+	uint8_t perm_attr_temp[PERM_ATTR_TOTAL_SIZE] = {0};
+	uint8_t flag = 0;
+#endif
+
+	switch (id) {
+	case AT_PERM_ATTR_FUSE:
+		if (size != PERM_ATTR_TOTAL_SIZE) {
+			debug("%s Permanent attribute size is not equal!\n", __func__);
+			return -EINVAL;
+		}
+
+#ifndef CONFIG_ROCKCHIP_PRELOADER_PUB_KEY
+		if (rk_avb_read_perm_attr_flag(&flag)) {
+			debug("%s rk_avb_read_perm_attr_flag error!\n", __func__);
+			return -EIO;
+		}
+
+		if (flag == PERM_ATTR_SUCCESS_FLAG) {
+			if (rk_avb_read_attribute_hash(digest_temp,
+						       SHA256_SUM_LEN)) {
+				debug("%s The efuse IO can not be used!\n", __func__);
+				return -EIO;
+			}
+
+			if (memcmp(digest, digest_temp, SHA256_SUM_LEN) != 0) {
+				if (rk_avb_read_permanent_attributes(perm_attr_temp,
+								     PERM_ATTR_TOTAL_SIZE)) {
+					debug("%s rk_avb_write_permanent_attributes error!\n", __func__);
+					return -EIO;
+				}
+
+				sha256_starts(&ctx);
+				sha256_update(&ctx,
+					      (const uint8_t *)perm_attr_temp,
+					      PERM_ATTR_TOTAL_SIZE);
+				sha256_finish(&ctx, digest);
+				if (memcmp(digest, digest_temp, SHA256_SUM_LEN) == 0) {
+					debug("%s The hash has been written!\n", __func__);
+					return 0;
+				}
+			}
+
+			if (rk_avb_write_perm_attr_flag(0)) {
+				debug("%s Perm attr flag write failure\n", __func__);
+				return -EIO;
+			}
+		}
+#endif
+		if (rk_avb_write_permanent_attributes((uint8_t *)
+						      pbuf,
+						      size)) {
+			if (rk_avb_write_perm_attr_flag(0)) {
+				debug("%s Perm attr flag write failure\n", __func__);
+				return -EIO;
+			}
+
+			debug("%s Perm attr write failed\n", __func__);
+			return -EIO;
+		}
+#ifndef CONFIG_ROCKCHIP_PRELOADER_PUB_KEY
+		memset(digest, 0, SHA256_SUM_LEN);
+		sha256_starts(&ctx);
+		sha256_update(&ctx, (const uint8_t *)pbuf,
+			      PERM_ATTR_TOTAL_SIZE);
+		sha256_finish(&ctx, digest);
+
+		if (rk_avb_write_attribute_hash((uint8_t *)digest,
+						SHA256_SUM_LEN)) {
+			if (rk_avb_read_attribute_hash(digest_temp,
+						       SHA256_SUM_LEN)) {
+				debug("%s The efuse IO can not be used!\n", __func__);
+				return -EIO;
+			}
+
+			if (memcmp(digest, digest_temp, SHA256_SUM_LEN) != 0) {
+				if (rk_avb_write_perm_attr_flag(0)) {
+					debug("%s Perm attr flag write failure\n", __func__);
+					return -EIO;
+				}
+				debug("%s The hash has been written, but is different!\n", __func__);
+				return -EIO;
+			}
+		}
+#endif
+		if (rk_avb_write_perm_attr_flag(PERM_ATTR_SUCCESS_FLAG)) {
+			debug("%s, Perm attr flag write failure\n", __func__);
+			return -EIO;
+		}
+
+		break;
+	case AT_PERM_ATTR_CER_FUSE:
+		if (size != 256) {
+			debug("%s Permanent attribute rsahash size is not equal!\n",
+			      __func__);
+			return -EINVAL;
+		}
+		if (rk_avb_set_perm_attr_cer((uint8_t *)pbuf, size)) {
+			debug("%s FAILSet perm attr cer fail!\n", __func__);
+			return -EIO;
+		}
+		break;
+	case AT_LOCK_VBOOT:
+		lock_state = 0;
+		if (rk_avb_write_lock_state(lock_state)) {
+			debug("%s FAILwrite lock state failed\n", __func__);
+			return -EIO;
+		} else {
+			debug("%s OKAY\n", __func__);
+		}
+		break;
+	}
+	return 0;
+}
+
+int rk_avb_read_perm_attr(u16 id, void *pbuf, u16 size)
+{
+	int ret = 0;
+	debug("%s %d\n", __func__, size);
+
+	switch (id) {
+	case AT_PERM_ATTR_FUSE:
+		size = PERM_ATTR_TOTAL_SIZE;
+		ret = rk_avb_read_permanent_attributes((uint8_t *)pbuf, PERM_ATTR_TOTAL_SIZE);
+		break;
+	case AT_PERM_ATTR_CER_FUSE:
+		size = PERM_ATTR_TOTAL_SIZE;
+		ret = rk_avb_get_perm_attr_cer((uint8_t *)pbuf, 256);
+		break;
+	case AT_LOCK_VBOOT:
+		break;
+	}
+
+	return ret;
+}
+

@@ -424,6 +424,12 @@ int fit_config_check_sig(const void *fit, int noffset, int required_keynode,
 		*err_msgp = "Verification failed";
 		return -1;
 	}
+	/* Get the secure flag here and write the secure data and the secure flag */
+#if !defined(USE_HOSTCC)
+#ifdef CONFIG_SPL_FIT_HW_CRYPTO
+	rsa_burn_key_hash(&info);
+#endif
+#endif
 
 	return 0;
 }
@@ -494,7 +500,12 @@ int fit_config_verify_required_sigs(const void *fit, int conf_noffset,
 		if (ret) {
 			printf("Failed to verify required signature '%s'\n",
 			       fit_get_name(sig_blob, noffset, NULL));
+#ifndef USE_HOSTCC
+			if (fit_board_verify_required_sigs())
+				return ret;
+#else
 			return ret;
+#endif
 		}
 	}
 

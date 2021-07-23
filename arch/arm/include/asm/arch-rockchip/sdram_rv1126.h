@@ -301,7 +301,7 @@ struct sdram_msch_timings {
 	union noc_ddrtiminga0 ddrtiminga0;
 	union noc_ddrtimingb0 ddrtimingb0;
 	union noc_ddrtimingc0 ddrtimingc0;
-	union noc_devtodev0 devtodev0;
+	union noc_devtodev_rv1126 devtodev0;
 	union noc_ddrmode ddrmode;
 	union noc_ddr4timing ddr4timing;
 	u32 agingx0;
@@ -358,5 +358,51 @@ struct rv1126_fsp_param {
  * from share memory space.
  */
 #define FSP_PARAM_STORE_ADDR	(SHARE_MEM_BASE)
+
+/* store result of read and write training, for ddr_dq_eye tool in u-boot */
+#define RW_TRN_RESULT_ADDR	(0x2000000 + 0x8000)	/* 32M + 32k */
+#define PRINT_STEP		1
+
+#undef FSP_NUM
+#undef CS_NUM
+#undef BYTE_NUM
+
+#define FSP_NUM			4
+#define CS_NUM			2
+#define BYTE_NUM		4
+#define RD_DESKEW_NUM		64
+#define WR_DESKEW_NUM		64
+
+#define LP4_WIDTH_REF_MHZ_H	1056
+#define LP4_RD_WIDTH_REF_H	12
+#define LP4_WR_WIDTH_REF_H	13
+
+#define LP4_WIDTH_REF_MHZ_L	924
+#define LP4_RD_WIDTH_REF_L	15
+#define LP4_WR_WIDTH_REF_L	15
+
+#define DDR4_WIDTH_REF_MHZ_H	1056
+#define DDR4_RD_WIDTH_REF_H	13
+#define DDR4_WR_WIDTH_REF_H	9
+
+#define DDR4_WIDTH_REF_MHZ_L	924
+#define DDR4_RD_WIDTH_REF_L	15
+#define DDR4_WR_WIDTH_REF_L	11
+
+#define LP3_WIDTH_REF_MHZ_H	1056
+#define LP3_RD_WIDTH_REF_H	15
+#define LP3_WR_WIDTH_REF_H	13
+
+#define LP3_WIDTH_REF_MHZ_L	924
+#define LP3_RD_WIDTH_REF_L	16
+#define LP3_WR_WIDTH_REF_L	15
+
+#define DDR3_WIDTH_REF_MHZ_H	1056
+#define DDR3_RD_WIDTH_REF_H	14
+#define DDR3_WR_WIDTH_REF_H	14
+
+#define DDR3_WIDTH_REF_MHZ_L	924
+#define DDR3_RD_WIDTH_REF_L	17
+#define DDR3_WR_WIDTH_REF_L	17
 
 #endif /* _ASM_ARCH_SDRAM_RK1126_H */

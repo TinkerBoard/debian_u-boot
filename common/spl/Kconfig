@@ -334,6 +334,7 @@ config SPL_ENV_SUPPORT
 config SPL_SAVEENV
 	bool "Support save environment"
 	depends on SPL_ENV_SUPPORT
+	select SPL_MMC_WRITE if ENV_IS_IN_MMC
 	help
 	  Enable save environment support in SPL after setenv. By default
 	  the saveenv option is not provided in SPL, but some boards need
@@ -448,6 +449,14 @@ config SPL_MMC_SUPPORT
 	  this option to build the drivers in drivers/mmc as part of an SPL
 	  build.
 
+config SPL_MMC_WRITE
+	bool "MMC/SD/SDIO card support for write operations in SPL"
+	depends on SPL_MMC_SUPPORT
+	default n
+	help
+	  Enable write access to MMC and SD Cards in SPL
+
+
 config SPL_MPC8XXX_INIT_DDR_SUPPORT
 	bool "Support MPC8XXX DDR init"
 	help
@@ -472,6 +481,13 @@ config MTD_BLK_U_BOOT_OFFS
 	help
 	  Set the offset from the start of the nand,spi nand and nor flash where
 	  u-boot should be loaded from.
+
+config SPL_MTD_WRITE
+	bool "nand & spi nand & spi nor support for write operations in SPL"
+	depends on SPL_MTD_SUPPORT
+	default n
+	help
+	  Enable write access to nand & spi nand & spi nor in SPL
 
 config SPL_MUSB_NEW_SUPPORT
 	bool "Support new Mentor Graphics USB"

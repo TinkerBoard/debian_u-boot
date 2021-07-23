@@ -198,7 +198,6 @@ enum {
 	RK817_POWER_EN2,
 	RK817_POWER_EN3,
 };
-
 #define RK817_POWER_EN_SAVE0	0x99
 #define RK817_POWER_EN_SAVE1	0xa4
 
@@ -206,6 +205,7 @@ enum {
 #define RK817_ID_LSB	0xee
 #define RK8XX_ID_MSK	0xfff0
 
+#define RK817_PMIC_SYS_CFG1	0xf1
 #define RK817_PMIC_SYS_CFG3	0xf4
 #define RK817_GPIO_INT_CFG	0xfe
 
@@ -277,11 +277,13 @@ struct rk8xx_reg_table {
 };
 
 struct rk8xx_priv {
+	struct virq_chip *irq_chip;
 	int variant;
 	int irq;
-	struct virq_chip *irq_chip;
 	int lp_off_time;
 	int lp_action;
+	uint8_t sleep_pin;
+	int not_save_power_en;
 };
 
 int rk8xx_spl_configure_buck(struct udevice *pmic, int buck, int uvolt);

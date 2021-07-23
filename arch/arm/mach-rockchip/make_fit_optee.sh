@@ -17,6 +17,10 @@ else
 	SUFFIX=
 fi
 
+if grep  -q '^CONFIG_FIT_ENABLE_RSASSA_PSS_SUPPORT=y' .config ; then
+	ALGO_PADDING="				padding = \"pss\";"
+fi
+
 # digest
 if [ "${COMPRESSION}" == "gzip" ]; then
 	openssl dgst -sha256 -binary -out ${srctree}/u-boot-nodtb.digest ${srctree}/u-boot-nodtb.bin
@@ -67,10 +71,15 @@ else
 	SIGN_IMAGES="			        sign-images = \"fdt\", \"firmware\", \"loadables\";"
 fi
 
-if [ -f ${srctree}/dts/kern.dtb ]; then
-	KFDT_NODE="		kernel-fdt {
-			description = \"Kernel dtb\";
-			data = /incbin/(\"./dts/kern.dtb\");
+KERN_DTB=`sed -n "/CONFIG_EMBED_KERNEL_DTB_PATH=/s/CONFIG_EMBED_KERNEL_DTB_PATH=//p" .config | tr -d '"'`
+if [ -z "${KERN_DTB}" ]; then
+	return;
+fi
+if [ -f ${srctree}/${KERN_DTB} ]; then
+	PROP_KERN_DTB=', "kern-fdt"';
+	KFDT_NODE="		kern-fdt {
+			description = \"${KERN_DTB}\";
+			data = /incbin/(\"${KERN_DTB}\");
 			type = \"flat_dt\";
 			arch = \"${ARCH}\";
 			compression = \"none\";
@@ -80,6 +89,7 @@ if [ -f ${srctree}/dts/kern.dtb ]; then
 		};"
 fi
 ########################################################################################################
+THIS_PLAT=`sed -n "/CONFIG_DEFAULT_DEVICE_TREE/p" .config | awk -F "=" '{ print $2 }' | tr -d '"'`
 
 cat << EOF
 /*
@@ -145,18 +155,17 @@ cat  << EOF
 	configurations {
 		default = "conf";
 		conf {
-			description = "Rockchip armv7 with OP-TEE";
+			description = "${THIS_PLAT}";
 			rollback-index = <0x0>;
-			burn-key-hash = <0>;
 			firmware = "optee";
 			loadables = "uboot";
-			fdt = "fdt";
+			fdt = "fdt"${PROP_KERN_DTB};
 EOF
 echo "${MCU_STANDALONE}"
 cat  << EOF
 			signature {
 				algo = "sha256,rsa2048";
-				padding = "pss";
+				${ALGO_PADDING}
 				key-name-hint = "dev";
 EOF
 echo "${SIGN_IMAGES}"

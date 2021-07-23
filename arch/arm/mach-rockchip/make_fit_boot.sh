@@ -14,11 +14,17 @@ fi
 
 if [ "${COMPRESSION}" == "gzip" ]; then
 	gzip -k -f -9 ${srctree}/images/kernel
-	gzip -k -f -9 ${srctree}/images/ramdisk
 	SUFFIX=".gz"
+elif [ "${COMPRESSION}" == "lz4" ]; then
+	lz4c -9 -f ${srctree}/images/kernel > ${srctree}/images/kernel.lz4
+	SUFFIX=".lz4"
 else
 	COMPRESSION="none"
 	SUFFIX=
+fi
+
+if grep  -q '^CONFIG_FIT_ENABLE_RSASSA_PSS_SUPPORT=y' .config ; then
+	ALGO_PADDING="				padding = \"pss\";"
 fi
 
 cat << EOF
@@ -48,10 +54,8 @@ cat << EOF
 		};
 
 		kernel {
-EOF
-echo "			data = /incbin/(\"./images/kernel${SUFFIX}\");"
-echo "			compression = \"${COMPRESSION}\";"
-cat << EOF
+			data = /incbin/("./images/kernel${SUFFIX}");
+			compression = "${COMPRESSION}";
 			type = "kernel";
 			arch = "${ARCH}";
 			os = "linux";
@@ -63,10 +67,8 @@ cat << EOF
 		};
 
 		ramdisk {
-EOF
-echo "			data = /incbin/(\"./images/ramdisk${SUFFIX}\");"
-echo "			compression = \"${COMPRESSION}\";"
-cat << EOF
+			data = /incbin/("./images/ramdisk");
+			compression = "none";
 			type = "ramdisk";
 			arch = "${ARCH}";
 			os = "linux";
@@ -98,7 +100,7 @@ cat << EOF
 			multi = "resource";
 			signature {
 				algo = "sha256,rsa2048";
-				padding = "pss";
+				${ALGO_PADDING}
 				key-name-hint = "dev";
 				sign-images = "fdt", "kernel", "ramdisk", "multi";
 			};

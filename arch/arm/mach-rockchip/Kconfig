@@ -236,7 +236,7 @@ config TPL_TEXT_BASE
 	default 0xfff81000
 
 config TPL_MAX_SIZE
-	default 12288
+	default 10240
 
 config TPL_STACK
 	default 0xfff84000
@@ -383,15 +383,15 @@ endif
 
 config ROCKCHIP_RK3568
 	bool "Support Rockchip RK3568"
-	select ARM64
-	select GICV3
-	select SPL
-	select SUPPORT_TPL
-	select SUPPORT_SPL
+	select ARM64 if !ARM64_BOOT_AARCH32
+	select ARM_SMCCC
+	select GICV3 if !ARM64_BOOT_AARCH32 && !SUPPORT_USBPLUG
+	select SUPPORT_TPL if !ARM64_BOOT_AARCH32
+	select SUPPORT_SPL if !ARM64_BOOT_AARCH32
 	select TPL_TINY_FRAMEWORK if TPL
 	select DEBUG_UART_BOARD_INIT
-	imply TPL
-	imply SPL
+	imply TPL if !ARM64_BOOT_AARCH32
+	imply SPL if !ARM64_BOOT_AARCH32
 	imply TPL_SERIAL_SUPPORT
 	help
 	  The Rockchip RK3568 is a ARM-based SoC with a quad-core Cortex-A55.
@@ -515,11 +515,18 @@ config TPL_ROCKCHIP_BACK_TO_BROM
           binary to keep going on.
 
 config ARM64_BOOT_AARCH32
-	bool "Support Boot an ARM64 on AArch32 execution state"
+	bool "Support Boot an ARM64 on AArch32 execution state, ie. U-Boot is in AArch32"
 	select CPU_V7
 	default n
 	help
 	  If you want to boot an ARM64 processor on 32-bit mode, say y here.
+
+config ARM64_SWITCH_TO_AARCH32
+	bool "Support AArch64 U-Boot boot AArch32 kernel"
+	default n
+	help
+	  If you want AArch64 U-Boot to boot AArch32 kernel, say y here.
+	  This feature needs ATF to help switch the PE state.
 
 config ROCKCHIP_BOOT_MODE_REG
 	hex "Rockchip boot mode flag register address"
@@ -721,6 +728,22 @@ config USING_KERNEL_DTB
 	  the uart and emmc will still using U-Boot dtb, but other devices like
 	  regulator/pmic, display, usb will use dts node from kernel.
 
+config EMBED_KERNEL_DTB_PATH
+	string "Embeded kernel dtb file path"
+	depends on USING_KERNEL_DTB
+	default "dts/kern.dtb"
+	help
+	  This file will auto be appended to the u-boot.bin.
+
+config EMBED_KERNEL_DTB_ALWAYS
+	bool "Always using embed kernel dtb"
+	depends on USING_KERNEL_DTB
+	default n
+	help
+	  Allow fallback to always use a prepared kernel dtb even USING_KERNEL_DTB
+	  is set. This makes U-Boot stage more stable but not flexible any more to
+	  compatible different boards.
+
 config ROCKCHIP_CRC
 	bool "Rockchip CRC verify images"
 	help
@@ -776,11 +799,45 @@ config ROCKCHIP_UART_MUX_SEL_M
 	help
 	  This select uart multiplexer for debug uart iomux in board_debug_uart_init.
 
+config ROCKCHIP_REBOOT_TEST
+	bool "Rockchip reboot stress test before kernel"
+	default n
+	help
+	  It's a reboot stress test before kernel stages.
+
+config GICV2
+	bool "ARM GICv2"
+
+config GICV3
+	bool "ARM GICv3"
+
+config ROCKCHIP_EMMC_IOMUX
+	bool "ROCKCHIP EMMC IOMUX"
+	default n
+	help
+	  This enable U-Boot to config EMMC iomux.
+
+config ROCKCHIP_NAND_IOMUX
+	bool "ROCKCHIP NAND IOMUX"
+	default n
+	help
+	  This enable U-Boot to config NAND iomux.
+
+config ROCKCHIP_SFC_IOMUX
+	bool "ROCKCHIP SFC IOMUX"
+	default n
+	help
+	  This enable U-Boot to config SFC iomux.
+
 config BASE_DEFCONFIG
 	string "Base defconfig of config fragment"
 	default ""
 	help
 	  Indicate the base defconfig of config fragment.
+
+config CHIP_NAME
+	string "Chip label name"
+	default ""
 
 config LOADER_INI
 	string "Name of Loader ini file in rkbin repository"
@@ -794,11 +851,35 @@ config TRUST_INI
 	help
 	  The ini file is used to pack trust image.
 
-config GICV2
-	bool "ARM GICv2"
+config UBOOT_SIZE_KB
+	int "Per u-boot.bin Image size, unit: KB"
+	default 1024
 
-config GICV3
-	bool "ARM GICv3"
+config UBOOT_NUM
+	int "Number of u-boot.bin image being packed into trust.img"
+	default 4
+
+config TRUST_SIZE_KB
+	int "Per trust Image size, unit: KB"
+	default 2048
+
+config TRUST_NUM
+	int "Number of trust image being packed into trust.img"
+	default 2
+
+config TRUST_RSA_MODE
+	int "RSA mode of trust.img on ARM64"
+	default 2
+	help
+	  The RSA mode for tools to pack, the mode id can be:
+	  0: none; 1: RSA-1024; 2: RSA-2048; 3: RSA-2048-pss.
+
+config TRUST_SHA_MODE
+	int "SHA mode of trust.img on ARM64"
+	default 3
+	help
+	  The SHA mode for tools to pack, the mode id can be:
+	  0: none; 1: sha1; 2: sha256 RK big endian; 3: sha256 little endian.
 
 source "arch/arm/mach-rockchip/px30/Kconfig"
 source "arch/arm/mach-rockchip/rk3036/Kconfig"

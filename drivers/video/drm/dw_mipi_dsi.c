@@ -205,6 +205,7 @@ enum grf_reg_fields {
 	VOPSEL,
 	TURNREQUEST,
 	TURNDISABLE,
+	SKEWCALHS,
 	FORCETXSTOPMODE,
 	FORCERXMODE,
 	ENABLE_N,
@@ -244,6 +245,7 @@ struct dw_mipi_dsi {
 	u32 mode_flags;
 	struct mipi_dphy dphy;
 	struct drm_display_mode mode;
+	bool data_swap;
 
 	const struct dw_mipi_dsi_plat_data *pdata;
 };
@@ -1081,17 +1083,29 @@ static void dw_mipi_dsi_clear_err(struct dw_mipi_dsi *dsi)
 	dsi_write(dsi, DSI_INT_MSK1, 0);
 }
 
+static int dw_mipi_dsi_connector_pre_init(struct display_state *state)
+{
+	struct connector_state *conn_state = &state->conn_state;
+
+	conn_state->type = DRM_MODE_CONNECTOR_DSI;
+
+	return 0;
+}
+
 static int dw_mipi_dsi_connector_init(struct display_state *state)
 {
 	struct connector_state *conn_state = &state->conn_state;
 	struct dw_mipi_dsi *dsi = dev_get_priv(conn_state->dev);
 
+	conn_state->disp_info  = rockchip_get_disp_info(conn_state->type, dsi->id);
 	dsi->dphy.phy = conn_state->phy;
 
 	conn_state->output_mode = ROCKCHIP_OUT_MODE_P888;
 	conn_state->color_space = V4L2_COLORSPACE_DEFAULT;
-	conn_state->type = DRM_MODE_CONNECTOR_DSI;
+	conn_state->output_if |=
+		dsi->id ? VOP_OUTPUT_IF_MIPI1 : VOP_OUTPUT_IF_MIPI0;
 
+#ifndef CONFIG_ROCKCHIP_RK3568
 	if (dsi->id) {
 		struct udevice *dev;
 		int ret;
@@ -1105,8 +1119,9 @@ static int dw_mipi_dsi_connector_init(struct display_state *state)
 		if (!dsi->master)
 			return -ENODEV;
 
-		conn_state->output_type = ROCKCHIP_OUTPUT_DSI_DUAL_LINK;
+		conn_state->output_flags = ROCKCHIP_OUTPUT_DATA_SWAP;
 	}
+#endif
 
 	if (dsi->lanes > 4) {
 		struct udevice *dev;
@@ -1115,8 +1130,10 @@ static int dw_mipi_dsi_connector_init(struct display_state *state)
 		ret = uclass_get_device_by_name(UCLASS_DISPLAY,
 #if defined(CONFIG_ROCKCHIP_RK3288)
 						"dsi@ff964000",
-#else
+#elif defined(CONFIG_ROCKCHIP_RK3399)
 						"dsi@ff968000",
+#else
+						"dsi@fe070000",
 #endif
 						&dev);
 		if (ret)
@@ -1131,7 +1148,31 @@ static int dw_mipi_dsi_connector_init(struct display_state *state)
 		dsi->slave->format = dsi->format;
 		dsi->slave->mode_flags = dsi->mode_flags;
 		dsi->slave->channel = dsi->channel;
-		conn_state->output_type = ROCKCHIP_OUTPUT_DSI_DUAL_CHANNEL;
+		conn_state->output_flags =
+				ROCKCHIP_OUTPUT_DUAL_CHANNEL_LEFT_RIGHT_MODE;
+		if (dsi->data_swap)
+			conn_state->output_flags |= ROCKCHIP_OUTPUT_DATA_SWAP;
+
+		conn_state->output_if |= VOP_OUTPUT_IF_MIPI1;
+
+#if defined(CONFIG_ROCKCHIP_RK3568)
+		struct rockchip_phy *phy = NULL;
+		struct udevice *phy_dev;
+
+		ret = uclass_get_device_by_phandle(UCLASS_PHY, dev,
+						   "phys", &phy_dev);
+		if (ret)
+			return -ENODEV;
+
+		phy = (struct rockchip_phy *)dev_get_driver_data(phy_dev);
+		if (!phy)
+			return -ENODEV;
+
+		dsi->slave->dphy.phy = phy;
+		if (phy->funcs && phy->funcs->init)
+			return phy->funcs->init(phy);
+#endif
+
 	}
 
 	return 0;
@@ -1242,6 +1283,9 @@ static int dw_mipi_dsi_connector_prepare(struct display_state *state)
 	else
 		dw_mipi_dsi_set_pll(dsi, lane_rate);
 
+	if (dsi->slave && dsi->slave->dphy.phy)
+		dw_mipi_dsi_set_hs_clk(dsi->slave, lane_rate);
+
 	printf("final DSI-Link bandwidth: %u Mbps x %d\n",
 	       dsi->lane_mbps, dsi->slave ? dsi->lanes * 2 : dsi->lanes);
 
@@ -1280,6 +1324,7 @@ static int dw_mipi_dsi_connector_disable(struct display_state *state)
 }
 
 static const struct rockchip_connector_funcs dw_mipi_dsi_connector_funcs = {
+	.pre_init = dw_mipi_dsi_connector_pre_init,
 	.init = dw_mipi_dsi_connector_init,
 	.prepare = dw_mipi_dsi_connector_prepare,
 	.unprepare = dw_mipi_dsi_connector_unprepare,
@@ -1307,6 +1352,7 @@ static int dw_mipi_dsi_probe(struct udevice *dev)
 	dsi->dev = dev;
 	dsi->pdata = pdata;
 	dsi->id = id;
+	dsi->data_swap = dev_read_bool(dsi->dev, "rockchip,data-swap");
 
 	return 0;
 }
@@ -1481,6 +1527,36 @@ static const struct rockchip_connector rk3399_mipi_dsi_driver_data = {
 	 .data = &rk3399_mipi_dsi_plat_data,
 };
 
+static const u32 rk3568_dsi0_grf_reg_fields[MAX_FIELDS] = {
+	[DPIUPDATECFG]		= GRF_REG_FIELD(0x0360,  2,  2),
+	[DPICOLORM]		= GRF_REG_FIELD(0x0360,  1,  1),
+	[DPISHUTDN]		= GRF_REG_FIELD(0x0360,  0,  0),
+	[SKEWCALHS]		= GRF_REG_FIELD(0x0368, 11, 15),
+	[FORCETXSTOPMODE]	= GRF_REG_FIELD(0x0368,  4,  7),
+	[TURNDISABLE]		= GRF_REG_FIELD(0x0368,  2,  2),
+	[FORCERXMODE]		= GRF_REG_FIELD(0x0368,  0,  0),
+};
+
+static const u32 rk3568_dsi1_grf_reg_fields[MAX_FIELDS] = {
+	[DPIUPDATECFG]		= GRF_REG_FIELD(0x0360, 10, 10),
+	[DPICOLORM]		= GRF_REG_FIELD(0x0360,  9,  9),
+	[DPISHUTDN]		= GRF_REG_FIELD(0x0360,  8,  8),
+	[SKEWCALHS]             = GRF_REG_FIELD(0x036c, 11, 15),
+	[FORCETXSTOPMODE]	= GRF_REG_FIELD(0x036c,  4,  7),
+	[TURNDISABLE]		= GRF_REG_FIELD(0x036c,  2,  2),
+	[FORCERXMODE]		= GRF_REG_FIELD(0x036c,  0,  0),
+};
+
+static const struct dw_mipi_dsi_plat_data rk3568_mipi_dsi_plat_data = {
+	.dsi0_grf_reg_fields = rk3568_dsi0_grf_reg_fields,
+	.dsi1_grf_reg_fields = rk3568_dsi1_grf_reg_fields,
+	.max_bit_rate_per_lane = 1200000000UL,
+};
+static const struct rockchip_connector rk3568_mipi_dsi_driver_data = {
+	 .funcs = &dw_mipi_dsi_connector_funcs,
+	 .data = &rk3568_mipi_dsi_plat_data,
+};
+
 static const u32 rv1108_dsi_grf_reg_fields[MAX_FIELDS] = {
 	[DPICOLORM]		= GRF_REG_FIELD(0x0410,  7,  7),
 	[DPISHUTDN]		= GRF_REG_FIELD(0x0410,  6,  6),
@@ -1547,6 +1623,10 @@ static const struct udevice_id dw_mipi_dsi_ids[] = {
 	{
 		.compatible = "rockchip,rk3399-mipi-dsi",
 		.data = (ulong)&rk3399_mipi_dsi_driver_data,
+	},
+	{
+		.compatible = "rockchip,rk3568-mipi-dsi",
+		.data = (ulong)&rk3568_mipi_dsi_driver_data,
 	},
 	{
 		.compatible = "rockchip,rv1108-mipi-dsi",

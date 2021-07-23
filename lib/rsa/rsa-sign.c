@@ -9,6 +9,7 @@
 #include <string.h>
 #include <image.h>
 #include <time.h>
+#include <generated/autoconf.h>
 #include <openssl/bn.h>
 #include <openssl/rsa.h>
 #include <openssl/pem.h>
@@ -700,6 +701,88 @@ int rsa_get_params(RSA *key, uint64_t *exponent, uint32_t *n0_invp,
 	return ret;
 }
 
+static void rsa_convert_big_endian(uint32_t *dst, const uint32_t *src,
+				   int total_len, int convert_len)
+{
+	int total_wd, convert_wd, i;
+
+	if (total_len < convert_len)
+		convert_len = total_len;
+
+	total_wd = total_len / sizeof(uint32_t);
+	convert_wd = convert_len / sizeof(uint32_t);
+	for (i = 0; i < convert_wd; i++)
+		dst[i] = fdt32_to_cpu(src[total_wd - 1 - i]);
+}
+
+static int rsa_set_key_hash(void *keydest, int key_node,
+			    int key_len, const char *csum_algo)
+{
+	const void *rsa_n, *rsa_e, *rsa_c, *rsa_np;
+	void *n, *e, *c, *np;
+	uint8_t value[FIT_MAX_HASH_LEN];
+	char hash_c[] = "hash@c";
+	char hash_np[] = "hash@np";
+	char *rsa_key;
+	int hash_node;
+	int value_len;
+	int ret = -ENOSPC;
+
+	rsa_key = calloc(key_len * 3, sizeof(char));
+	if (!rsa_key)
+		return -ENOSPC;
+
+	rsa_n = fdt_getprop(keydest, key_node, "rsa,modulus", NULL);
+	rsa_e = fdt_getprop(keydest, key_node, "rsa,exponent-BN", NULL);
+	rsa_c = fdt_getprop(keydest, key_node, "rsa,c", NULL);
+	rsa_np = fdt_getprop(keydest, key_node, "rsa,np", NULL);
+	if (!rsa_c || !rsa_np || !rsa_n || !rsa_e)
+		goto err_nospc;
+
+	n = rsa_key;
+	e = rsa_key + CONFIG_RSA_N_SIZE;
+	rsa_convert_big_endian(n, rsa_n, key_len, CONFIG_RSA_N_SIZE);
+	rsa_convert_big_endian(e, rsa_e, key_len, CONFIG_RSA_E_SIZE);
+
+	/* hash@c node: n, e, c */
+	c = rsa_key + CONFIG_RSA_N_SIZE + CONFIG_RSA_E_SIZE;
+	rsa_convert_big_endian(c, rsa_c, key_len, CONFIG_RSA_C_SIZE);
+	hash_node = fdt_add_subnode(keydest, key_node, hash_c);
+	if (hash_node < 0)
+		goto err_nospc;
+	ret = calculate_hash(rsa_key, key_len * 3, csum_algo, value, &value_len);
+	if (ret)
+		goto err_nospc;
+	ret = fdt_setprop(keydest, hash_node, FIT_VALUE_PROP, value, value_len);
+	if (ret)
+		goto err_nospc;
+	ret = fdt_setprop_string(keydest, hash_node, FIT_ALGO_PROP, csum_algo);
+	if (ret < 0)
+		goto err_nospc;
+
+	/* hash@np node: n, e, np */
+	np = rsa_key + CONFIG_RSA_N_SIZE + CONFIG_RSA_E_SIZE;
+	rsa_convert_big_endian(np, rsa_np, key_len, CONFIG_RSA_C_SIZE);
+	hash_node = fdt_add_subnode(keydest, key_node, hash_np);
+	if (hash_node < 0)
+		goto err_nospc;
+
+	ret = calculate_hash(rsa_key, CONFIG_RSA_N_SIZE + CONFIG_RSA_E_SIZE + CONFIG_RSA_C_SIZE,
+			     csum_algo, value, &value_len);
+	if (ret)
+		goto err_nospc;
+	ret = fdt_setprop(keydest, hash_node, FIT_VALUE_PROP, value, value_len);
+	if (ret < 0)
+		goto err_nospc;
+	ret = fdt_setprop_string(keydest, hash_node, FIT_ALGO_PROP, csum_algo);
+
+err_nospc:
+	if (rsa_key)
+		free(rsa_key);
+
+	return ret ? -ENOSPC : 0;
+}
+
 static int fdt_add_bignum(void *blob, int noffset, const char *prop_name,
 			  BIGNUM *num, int num_bits)
 {
@@ -853,6 +936,10 @@ int rsa_add_verify_data(struct image_sign_info *info, void *keydest)
 	if (!ret && info->require_keys) {
 		ret = fdt_setprop_string(keydest, node, "required",
 					 info->require_keys);
+	}
+	if (!ret) {
+		ret = rsa_set_key_hash(keydest, node, info->crypto->key_len,
+				       info->checksum->name);
 	}
 done:
 	BN_free(modulus);

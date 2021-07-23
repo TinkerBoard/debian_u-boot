@@ -54,6 +54,35 @@ static const struct mtd_ooblayout_ops fm25s01a_ooblayout = {
 	.rfree = fm25s01a_ooblayout_free,
 };
 
+static int fm25s01_ooblayout_ecc(struct mtd_info *mtd, int section,
+				 struct mtd_oob_region *region)
+{
+	if (section)
+		return -ERANGE;
+
+	region->offset = 64;
+	region->length = 64;
+
+	return 0;
+}
+
+static int fm25s01_ooblayout_free(struct mtd_info *mtd, int section,
+				  struct mtd_oob_region *region)
+{
+	if (section)
+		return -ERANGE;
+
+	region->offset = 2;
+	region->length = 62;
+
+	return 0;
+}
+
+static const struct mtd_ooblayout_ops fm25s01_ooblayout = {
+	.ecc = fm25s01_ooblayout_ecc,
+	.rfree = fm25s01_ooblayout_free,
+};
+
 static const struct spinand_info fmsh_spinand_table[] = {
 	SPINAND_INFO("FM25S01A", 0xE4,
 		     NAND_MEMORG(1, 2048, 64, 64, 1024, 1, 1, 1),
@@ -64,13 +93,21 @@ static const struct spinand_info fmsh_spinand_table[] = {
 		     0,
 		     SPINAND_ECCINFO(&fm25s01a_ooblayout, NULL)),
 	SPINAND_INFO("FM25S02A", 0xE5,
-		     NAND_MEMORG(1, 2048, 64, 64, 2048, 1, 1, 1),
+		     NAND_MEMORG(1, 2048, 64, 64, 2048, 2, 1, 1),
+		     NAND_ECCREQ(1, 512),
+		     SPINAND_INFO_OP_VARIANTS(&read_cache_variants,
+					      &write_cache_variants,
+					      &update_cache_variants),
+		     1,
+		     SPINAND_ECCINFO(&fm25s01a_ooblayout, NULL)),
+	SPINAND_INFO("FM25S01", 0xA1,
+		     NAND_MEMORG(1, 2048, 64, 64, 1024, 1, 1, 1),
 		     NAND_ECCREQ(1, 512),
 		     SPINAND_INFO_OP_VARIANTS(&read_cache_variants,
 					      &write_cache_variants,
 					      &update_cache_variants),
 		     0,
-		     SPINAND_ECCINFO(&fm25s01a_ooblayout, NULL)),
+		     SPINAND_ECCINFO(&fm25s01_ooblayout, NULL)),
 };
 
 /**

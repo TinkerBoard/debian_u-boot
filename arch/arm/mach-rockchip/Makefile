@@ -27,6 +27,7 @@ ifeq ($(CONFIG_SPL_BUILD)$(CONFIG_TPL_BUILD),)
 
 obj-y += chip_info.o
 ifndef CONFIG_SUPPORT_USBPLUG
+obj-y += lowlevel_init.o
 obj-y += boot_mode.o
 obj-y += boot_rkimg.o
 obj-y += board.o
@@ -77,3 +78,4 @@ obj-$(CONFIG_SPL_BUILD) += $(obj-spl-y)
 obj-$(CONFIG_TPL_BUILD) += $(obj-tpl-y)
 
 obj-$(CONFIG_ROCKCHIP_PRELOADER_ATAGS) += rk_atags.o
+obj-$(CONFIG_SET_DFU_ALT_INFO) += dfu_alt_info.o

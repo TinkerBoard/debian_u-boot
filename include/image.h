@@ -933,7 +933,6 @@ int bootz_setup(ulong image, ulong *start, ulong *end);
 #define FIT_LOAD_PROP		"load"
 #define FIT_PRE_LOAD_PROP	"preload"
 #define FIT_ROLLBACK_PROP	"rollback-index"
-#define FIT_KERNEL_FDT_PROP	"kernel-fdt"
 
 /* configuration node */
 #define FIT_KERNEL_PROP		"kernel"
@@ -948,6 +947,7 @@ int bootz_setup(ulong image, ulong *start, ulong *end);
 #define FIT_STANDALONE_PROP	"standalone"
 
 #define FIT_MAX_HASH_LEN	HASH_MAX_DIGEST_SIZE
+#define FIT_MAX_SPL_IMAGE_SZ	SZ_2M
 
 #if IMAGE_ENABLE_FIT
 

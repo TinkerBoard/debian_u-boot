@@ -102,6 +102,9 @@ DECLARE_GLOBAL_DATA_PTR;
 #define OTP_S_BASE		0xFF5D0000
 #define OTP_NVM_TRWH		0x28
 
+#define PMU_GRF_BASE		0xFE020000
+#define PMUGRF_GPIO0B_IOMUX_H	0xc
+
 enum {
 	GPIO1A7_SHIFT		= 12,
 	GPIO1A7_MASK		= GENMASK(14, 12),
@@ -552,7 +555,7 @@ int arch_cpu_init(void)
 		writel(WDT_RESET_SRC_CLR, PMUGRF_RSTFUNC_CLR);
 	}
 
-#ifdef CONFIG_SPL_BUILD
+  #ifdef CONFIG_SPL_BUILD
 	/* set otp tRWH to 0x9 for stable read */
 	writel(0x9, OTP_NS_BASE + OTP_NVM_TRWH);
 	writel(0x9, OTP_S_BASE + OTP_NVM_TRWH);
@@ -562,7 +565,7 @@ int arch_cpu_init(void)
 	 * (Note: only secure-world can access this register)
 	 */
 	writel(0, FIREWALL_APB_BASE + FW_DDR_CON_REG);
-#endif
+  #endif
 
 	/* disable force jtag mux route to both group0 and group1 */
 	writel(0x00300000, GRF_IOFUNC_CON3);
@@ -578,7 +581,7 @@ int arch_cpu_init(void)
 	writel(0xffffffff, PMU_BASE_ADDR + PMU_NOC_AUTO_CON0);
 	writel(0xffffffff, PMU_BASE_ADDR + PMU_NOC_AUTO_CON1);
 
-#ifdef CONFIG_SPL_KERNEL_BOOT
+  #ifdef CONFIG_SPL_KERNEL_BOOT
 	/* Adjust the parameters of GPLL's VCO for reduce power*/
 	writel(0x00030000, CRU_PMU_BASE);
 	writel(0xffff1063, CRU_PMU_BASE + CRU_PMU_GPLL_CON0);
@@ -601,7 +604,7 @@ int arch_cpu_init(void)
 	writel(0x00ff0045, CRU_BASE + CRU_CLKSEL_CON68);
 	writel(0x00ff0043, CRU_BASE + CRU_CLKSEL_CON69);
 
-#endif
+  #endif
 	/* enable all pd */
 	writel(0xffff0000, PMU_BASE_ADDR + PMU_PWR_GATE_SFTCON);
 	delay = 1000;
@@ -672,6 +675,14 @@ int arch_cpu_init(void)
 	/* enable dynamic priority */
 	writel(0x1, ISP_PRIORITY_EX_REG);
 
+	/*
+	 * Init the i2c0 iomux and use it to control electronic voltmeter
+	 * to detect voltage.
+	 */
+  #if defined(CONFIG_SPL_KERNEL_BOOT) && defined(CONFIG_SPL_DM_FUEL_GAUGE)
+	writel(0x00770011, PMU_GRF_BASE + PMUGRF_GPIO0B_IOMUX_H);
+  #endif
+
 #elif defined(CONFIG_SUPPORT_USBPLUG)
 	/* Just set region 0 to unsecure */
 	writel(0, FIREWALL_APB_BASE + FW_DDR_CON_REG);
@@ -683,12 +694,34 @@ int arch_cpu_init(void)
 
 	/* hold pmugrf's io reset */
 	writel(0x1 << 7 | 1 << 23, PMUGRF_SOC_CON1);
+
+#else /* U-Boot */
+	/* uboot: config iomux for sd boot upgrade firmware */
+  #if defined(CONFIG_ROCKCHIP_SFC_IOMUX)
+	static struct rv1126_grf * const grf = (void *)GRF_BASE;
+
+	writel(0x0F0F0303, &grf->gpio0d_iomux_h);
+	writel(0xFFFF3333, &grf->gpio1a_iomux_l);
+  #elif defined(CONFIG_ROCKCHIP_EMMC_IOMUX)
+	static struct rv1126_grf * const grf = (void *)GRF_BASE;
+
+	writel(0xFFFF2222, &grf->gpio0c_iomux_h);
+	writel(0xFFFF2222, &grf->gpio0d_iomux_l);
+	writel(0xF0F02020, &grf->gpio0d_iomux_h);
+  #elif defined(CONFIG_ROCKCHIP_NAND_IOMUX)
+	static struct rv1126_grf * const grf = (void *)GRF_BASE;
+
+	writel(0xFFFF1111, &grf->gpio0c_iomux_h);
+	writel(0xFFFF1111, &grf->gpio0d_iomux_l);
+	writel(0xF0FF1011, &grf->gpio0d_iomux_h);
+	writel(0xFFFF1111, &grf->gpio1a_iomux_l);
+  #endif
+
 #endif
 
-#if defined(CONFIG_ROCKCHIP_SFC) && (defined(CONFIG_SPL_BUILD) || defined(CONFIG_SUPPORT_USBPLUG))
 	/* GPIO0_D6 pull down in default, pull up it for SPI Flash */
 	writel(((0x3 << 12) << 16) | (0x1 << 12), GRF1_GPIO0D_P);
-#endif
+
 	return 0;
 }
 #endif

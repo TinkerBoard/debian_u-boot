@@ -1582,7 +1582,7 @@ static void decode_mode(u8 *buf, struct drm_display_mode *mode)
 	mode->flags |= EDID_DETAILED_TIMING_FLAG_VSYNC_POLARITY(*t) ?
 		DRM_MODE_FLAG_PVSYNC : DRM_MODE_FLAG_NVSYNC;
 
-	if (EDID_DETAILED_TIMING_FLAG_INTERLEAVED(*t))
+	if (EDID_DETAILED_TIMING_FLAG_INTERLACED(*t))
 		mode->flags |= DRM_MODE_FLAG_INTERLACE;
 
 	debug("Detailed mode clock %u kHz, %d mm x %d mm, flags[%x]\n"
@@ -6171,11 +6171,6 @@ int hdmi_infoframe_unpack(union hdmi_infoframe *frame, void *buffer)
 bool drm_mode_equal(const struct base_drm_display_mode *mode1,
 		    const struct drm_display_mode *mode2)
 {
-	unsigned int flags_mask =
-		DRM_MODE_FLAG_INTERLACE | DRM_MODE_FLAG_PHSYNC |
-		DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_PVSYNC |
-		DRM_MODE_FLAG_NVSYNC;
-
 	if (mode1->clock == mode2->clock &&
 	    mode1->hdisplay == mode2->hdisplay &&
 	    mode1->hsync_start == mode2->hsync_start &&
@@ -6185,9 +6180,8 @@ bool drm_mode_equal(const struct base_drm_display_mode *mode1,
 	    mode1->vsync_start == mode2->vsync_start &&
 	    mode1->vsync_end == mode2->vsync_end &&
 	    mode1->vtotal == mode2->vtotal &&
-	    (mode1->flags & flags_mask) == (mode2->flags & flags_mask)) {
+	    mode1->flags == mode2->flags)
 		return true;
-	}
 
 	return false;
 }
@@ -6366,8 +6360,14 @@ drm_do_probe_ddc_edid(struct ddc_adapter *adap, u8 *buf, unsigned int block,
 			}
 		};
 
-		ret = adap->ddc_xfer(adap, &msgs[3 - xfers], xfers);
-
+		if (adap->ops) {
+			ret = adap->ops->xfer(adap->i2c_bus, &msgs[3 - xfers],
+					      xfers);
+			if (!ret)
+				ret = xfers;
+		} else {
+			ret = adap->ddc_xfer(adap, &msgs[3 - xfers], xfers);
+		}
 	} while (ret != xfers && --retries);
 
 	/* All msg transfer successfully. */

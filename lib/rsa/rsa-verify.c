@@ -8,6 +8,7 @@
 #include <common.h>
 #include <crypto.h>
 #include <fdtdec.h>
+#include <misc.h>
 #include <asm/types.h>
 #include <asm/byteorder.h>
 #include <linux/errno.h>
@@ -61,12 +62,18 @@ static int rsa_verify_padding(const uint8_t *msg, const int pad_len,
 
 #if !defined(USE_HOSTCC)
 #if CONFIG_IS_ENABLED(FIT_HW_CRYPTO)
-static void rsa_convert_big_endian(uint32_t *dst, const uint32_t *src, int len)
+static void rsa_convert_big_endian(uint32_t *dst, const uint32_t *src,
+				   int total_len, int convert_len)
 {
-	int i;
+	int total_wd, convert_wd, i;
 
-	for (i = 0; i < len; i++)
-		dst[i] = fdt32_to_cpu(src[len - 1 - i]);
+	if (total_len < convert_len)
+		convert_len = total_len;
+
+	total_wd = total_len / sizeof(uint32_t);
+	convert_wd = convert_len / sizeof(uint32_t);
+	for (i = 0; i < convert_wd; i++)
+		dst[i] = fdt32_to_cpu(src[total_wd - 1 - i]);
 }
 
 static int rsa_mod_exp_hw(struct key_prop *prop, const uint8_t *sig,
@@ -90,15 +97,15 @@ static int rsa_mod_exp_hw(struct key_prop *prop, const uint8_t *sig,
 		return -ENOMEM;
 
 	rsa_convert_big_endian(rsa_key.n, (uint32_t *)prop->modulus,
-			       key_len / sizeof(uint32_t));
+			       key_len, key_len);
 	rsa_convert_big_endian(rsa_key.e, (uint32_t *)prop->public_exponent_BN,
-			       key_len / sizeof(uint32_t));
+			       key_len, key_len);
 #ifdef CONFIG_ROCKCHIP_CRYPTO_V1
 	rsa_convert_big_endian(rsa_key.c, (uint32_t *)prop->factor_c,
-			       key_len / sizeof(uint32_t));
+			       key_len, key_len);
 #else
 	rsa_convert_big_endian(rsa_key.c, (uint32_t *)prop->factor_np,
-			       key_len / sizeof(uint32_t));
+			       key_len, key_len);
 #endif
 	for (i = 0; i < sig_len; i++)
 		sig_reverse[sig_len-1-i] = sig[i];
@@ -414,6 +421,62 @@ static int rsa_verify_key(struct image_sign_info *info,
 	return 0;
 }
 
+static int rsa_get_key_prop(struct key_prop *prop, struct image_sign_info *info, int node)
+{
+	const void *blob = info->fdt_blob;
+	int length;
+	int hash_node;
+
+	if (node < 0) {
+		debug("%s: Skipping invalid node", __func__);
+		return -EBADF;
+	}
+
+	if (!prop) {
+		debug("%s: The prop is NULL", __func__);
+		return -EBADF;
+	}
+
+	prop->burn_key = fdtdec_get_int(blob, node, "burn-key-hash", 0);
+
+	prop->num_bits = fdtdec_get_int(blob, node, "rsa,num-bits", 0);
+
+	prop->n0inv = fdtdec_get_int(blob, node, "rsa,n0-inverse", 0);
+
+	prop->public_exponent = fdt_getprop(blob, node, "rsa,exponent", &length);
+	if (!prop->public_exponent || length < sizeof(uint64_t))
+		prop->public_exponent = NULL;
+
+	prop->exp_len = sizeof(uint64_t);
+	prop->modulus = fdt_getprop(blob, node, "rsa,modulus", NULL);
+	prop->public_exponent_BN = fdt_getprop(blob, node, "rsa,exponent-BN", NULL);
+	prop->rr = fdt_getprop(blob, node, "rsa,r-squared", NULL);
+#ifdef CONFIG_ROCKCHIP_CRYPTO_V1
+	hash_node = fdt_subnode_offset(blob, node, "hash@c");
+#else
+	hash_node = fdt_subnode_offset(blob, node, "hash@np");
+#endif
+	if (hash_node >= 0)
+		prop->hash = fdt_getprop(blob, hash_node, "value", NULL);
+
+	if (!prop->num_bits || !prop->modulus) {
+		debug("%s: Missing RSA key info", __func__);
+		return -EFAULT;
+	}
+
+#ifdef CONFIG_ROCKCHIP_CRYPTO_V1
+	prop->factor_c = fdt_getprop(blob, node, "rsa,c", NULL);
+	if (!prop.factor_c)
+		return -EFAULT;
+#else
+	prop->factor_np = fdt_getprop(blob, node, "rsa,np", NULL);
+	if (!prop->factor_np)
+		return -EFAULT;
+#endif
+
+	return 0;
+}
+
 /**
  * rsa_verify_with_keynode() - Verify a signature against some data using
  * information in node with prperties of RSA Key like modulus, exponent etc.
@@ -433,53 +496,13 @@ static int rsa_verify_with_keynode(struct image_sign_info *info,
 				   const void *hash, uint8_t *sig,
 				   uint sig_len, int node)
 {
-	const void *blob = info->fdt_blob;
 	struct key_prop prop;
-	int length;
-	int ret = 0;
 
-	if (node < 0) {
-		debug("%s: Skipping invalid node", __func__);
-		return -EBADF;
-	}
-
-	prop.num_bits = fdtdec_get_int(blob, node, "rsa,num-bits", 0);
-
-	prop.n0inv = fdtdec_get_int(blob, node, "rsa,n0-inverse", 0);
-
-	prop.public_exponent = fdt_getprop(blob, node, "rsa,exponent", &length);
-	if (!prop.public_exponent || length < sizeof(uint64_t))
-		prop.public_exponent = NULL;
-
-	prop.exp_len = sizeof(uint64_t);
-
-	prop.modulus = fdt_getprop(blob, node, "rsa,modulus", NULL);
-	prop.public_exponent_BN = fdt_getprop(blob, node, "rsa,exponent-BN", NULL);
-
-	prop.rr = fdt_getprop(blob, node, "rsa,r-squared", NULL);
-
-	if (!prop.num_bits || !prop.modulus) {
-		debug("%s: Missing RSA key info", __func__);
+	if (rsa_get_key_prop(&prop, info, node))
 		return -EFAULT;
-	}
 
-#if !defined(USE_HOSTCC)
-#if CONFIG_IS_ENABLED(FIT_HW_CRYPTO)
-#ifdef CONFIG_ROCKCHIP_CRYPTO_V1
-	prop.factor_c = fdt_getprop(blob, node, "rsa,c", NULL);
-	if (!prop.factor_c)
-		return -EFAULT;
-#else
-	prop.factor_np = fdt_getprop(blob, node, "rsa,np", NULL);
-	if (!prop.factor_np)
-		return -EFAULT;
-#endif
-#endif
-#endif
-	ret = rsa_verify_key(info, &prop, sig, sig_len, hash,
-			     info->crypto->key_len);
-
-	return ret;
+	return rsa_verify_key(info, &prop, sig, sig_len, hash,
+			      info->crypto->key_len);
 }
 
 int rsa_verify(struct image_sign_info *info,
@@ -548,3 +571,131 @@ int rsa_verify(struct image_sign_info *info,
 
 	return ret;
 }
+
+#if !defined(USE_HOSTCC)
+#ifdef CONFIG_SPL_FIT_HW_CRYPTO
+int rsa_burn_key_hash(struct image_sign_info *info)
+{
+	char *rsa_key;
+	void *n, *e, *c;
+	uint32_t key_len;
+	struct udevice *dev;
+	struct key_prop prop;
+	char name[100] = {0};
+	u16 secure_boot_enable = 0;
+	const void *blob = info->fdt_blob;
+	uint8_t digest[FIT_MAX_HASH_LEN];
+	uint8_t digest_read[FIT_MAX_HASH_LEN];
+	int sig_node, node, digest_len, i, ret = 0;
+
+	dev = misc_otp_get_device(OTP_S);
+	if (!dev)
+		return -ENODEV;
+
+	ret = misc_otp_read(dev, OTP_SECURE_BOOT_ENABLE_ADDR,
+			    &secure_boot_enable, OTP_SECURE_BOOT_ENABLE_SIZE);
+	if (ret)
+		return ret;
+
+	if (secure_boot_enable)
+		return 0;
+
+	sig_node = fdt_subnode_offset(blob, 0, FIT_SIG_NODENAME);
+	if (sig_node < 0) {
+		debug("%s: No signature node found\n", __func__);
+		return -ENOENT;
+	}
+
+	snprintf(name, sizeof(name), "key-%s", info->keyname);
+	node = fdt_subnode_offset(blob, sig_node, name);
+
+	if (rsa_get_key_prop(&prop, info, node))
+		return -1;
+
+	if (!(prop.burn_key))
+		return -EPERM;
+
+	if (!prop.hash || !prop.modulus || !prop.public_exponent_BN)
+		return -ENOENT;
+#ifdef CONFIG_ROCKCHIP_CRYPTO_V1
+	if (!prop.factor_c)
+		return -ENOENT;
+#else
+	if (!prop.factor_np)
+		return -ENOENT;
+#endif
+	key_len = info->crypto->key_len;
+	if (info->crypto->key_len != RSA2048_BYTES)
+		return -EINVAL;
+
+	rsa_key = calloc(key_len * 3, sizeof(char));
+	if (!rsa_key)
+		return -ENOMEM;
+
+	n = rsa_key;
+	e = rsa_key + CONFIG_RSA_N_SIZE;
+	c = rsa_key + CONFIG_RSA_N_SIZE + CONFIG_RSA_E_SIZE;
+	rsa_convert_big_endian(n, (uint32_t *)prop.modulus,
+			       key_len, CONFIG_RSA_N_SIZE);
+	rsa_convert_big_endian(e, (uint32_t *)prop.public_exponent_BN,
+			       key_len, CONFIG_RSA_E_SIZE);
+#ifdef CONFIG_ROCKCHIP_CRYPTO_V1
+	rsa_convert_big_endian(c, (uint32_t *)prop.factor_c,
+			       key_len, CONFIG_RSA_C_SIZE);
+#else
+	rsa_convert_big_endian(c, (uint32_t *)prop.factor_np,
+			       key_len, CONFIG_RSA_C_SIZE);
+#endif
+
+	ret = calculate_hash(rsa_key, CONFIG_RSA_N_SIZE + CONFIG_RSA_E_SIZE + CONFIG_RSA_C_SIZE,
+			     info->checksum->name, digest, &digest_len);
+	if (ret)
+		goto error;
+
+	if (memcmp(digest, prop.hash, digest_len) != 0) {
+		printf("RSA: Compare public key hash fail.\n");
+		goto error;
+	}
+
+	/* burn key hash here */
+	ret = misc_otp_read(dev, OTP_RSA_HASH_ADDR, digest_read, OTP_RSA_HASH_SIZE);
+	if (ret)
+		goto error;
+
+	for (i = 0; i < OTP_RSA_HASH_SIZE; i++) {
+		if (digest_read[i]) {
+			printf("RSA: The secure region has been written.\n");
+			ret = -EIO;
+			goto error;
+		}
+	}
+
+	ret = misc_otp_write(dev, OTP_RSA_HASH_ADDR, digest, OTP_RSA_HASH_SIZE);
+	if (ret)
+		goto error;
+
+	memset(digest_read, 0, FIT_MAX_HASH_LEN);
+	ret = misc_otp_read(dev, OTP_RSA_HASH_ADDR, digest_read, OTP_RSA_HASH_SIZE);
+	if (ret)
+		goto error;
+
+	if (memcmp(digest, digest_read, digest_len) != 0) {
+		printf("RSA: Write public key hash fail.\n");
+		goto error;
+	}
+
+	secure_boot_enable = 0xff;
+	ret = misc_otp_write(dev, OTP_SECURE_BOOT_ENABLE_ADDR,
+			     &secure_boot_enable, OTP_SECURE_BOOT_ENABLE_SIZE);
+	if (ret)
+		goto error;
+
+	printf("RSA: Write key hash successfully\n");
+
+error:
+	free(rsa_key);
+
+	return ret;
+}
+#endif
+#endif

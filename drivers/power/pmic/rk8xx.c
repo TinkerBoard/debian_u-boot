@@ -149,12 +149,11 @@ static struct reg_data rk817_init_reg[] = {
  * the under-voltage protection will shutdown the LDO3 and reset the PMIC
  */
 	{ RK817_BUCK4_CMIN, 0x60, 0x60},
-/*
- * Only when system suspend while U-Boot charge needs this config support
- */
+	{ RK817_PMIC_SYS_CFG1, 0x40, 0x40},
+	/* Set pmic_sleep as none function */
+	{ RK817_PMIC_SYS_CFG3, 0x00, 0x18 },
+
 #ifdef CONFIG_DM_CHARGE_DISPLAY
-	/* Set pmic_sleep as sleep function */
-	{ RK817_PMIC_SYS_CFG3, 0x08, 0x18 },
 	/* Set pmic_int active low */
 	{ RK817_GPIO_INT_CFG,  0x00, 0x02 },
 #endif
@@ -231,6 +230,48 @@ static int rk8xx_read(struct udevice *dev, uint reg, uint8_t *buff, int len)
 	}
 
 	return 0;
+}
+
+static int rk8xx_suspend(struct udevice *dev)
+{
+	struct rk8xx_priv *priv = dev_get_priv(dev);
+	int ret = 0;
+	u8 val;
+
+	switch (priv->variant) {
+	case RK809_ID:
+	case RK817_ID:
+		/* pmic_sleep active high */
+		ret = rk8xx_read(dev, RK817_PMIC_SYS_CFG3, &val, 1);
+		if (ret)
+			return ret;
+		priv->sleep_pin = val;
+		val &= ~0x38;
+		val |= 0x28;
+		ret = rk8xx_write(dev, RK817_PMIC_SYS_CFG3, &val, 1);
+		break;
+	default:
+		return 0;
+	}
+
+	return ret;
+}
+
+static int rk8xx_resume(struct udevice *dev)
+{
+	struct rk8xx_priv *priv = dev_get_priv(dev);
+	int ret = 0;
+
+	switch (priv->variant) {
+	case RK809_ID:
+	case RK817_ID:
+		ret = rk8xx_write(dev, RK817_PMIC_SYS_CFG3, &priv->sleep_pin, 1);
+		break;
+	default:
+		return 0;
+	}
+
+	return ret;
 }
 
 static int rk8xx_shutdown(struct udevice *dev)
@@ -370,6 +411,9 @@ static int rk8xx_ofdata_to_platdata(struct udevice *dev)
 	else
 		rk8xx->lp_action = RK8XX_LP_OFF;
 
+	val = dev_read_u32_default(dev, "not-save-power-en", 0);
+	rk8xx->not_save_power_en = val;
+
 	return 0;
 }
 
@@ -498,6 +542,9 @@ static int rk8xx_probe(struct udevice *dev)
 		lp_act_msk = RK8XX_LP_ACTION_MSK;
 		init_data = rk817_init_reg;
 		init_data_num = ARRAY_SIZE(rk817_init_reg);
+		/* judge whether save the PMIC_POWER_EN register */
+		if (priv->not_save_power_en)
+			break;
 		power_en0 = pmic_reg_read(dev, RK817_POWER_EN0);
 		power_en1 = pmic_reg_read(dev, RK817_POWER_EN1);
 		power_en2 = pmic_reg_read(dev, RK817_POWER_EN2);
@@ -568,6 +615,8 @@ static struct dm_pmic_ops rk8xx_ops = {
 	.reg_count = rk8xx_reg_count,
 	.read = rk8xx_read,
 	.write = rk8xx_write,
+	.suspend = rk8xx_suspend,
+	.resume = rk8xx_resume,
 	.shutdown = rk8xx_shutdown,
 };
 

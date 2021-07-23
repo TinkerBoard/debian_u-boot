@@ -5,6 +5,7 @@
 obj-$(CONFIG_$(SPL_TPL_)CLK) += clk/
 obj-$(CONFIG_$(SPL_TPL_)DM) += core/
 obj-$(CONFIG_$(SPL_TPL_)DM_CRYPTO) += crypto/
+obj-$(CONFIG_$(SPL_TPL_)DM_RNG) += rng/
 obj-$(CONFIG_$(SPL_TPL_)DRIVERS_MISC_SUPPORT) += misc/ sysreset/ firmware/
 obj-$(CONFIG_$(SPL_TPL_)I2C_SUPPORT) += i2c/
 obj-$(CONFIG_$(SPL_TPL_)LED) += led/
@@ -30,9 +31,10 @@ obj-$(CONFIG_SPL_MPC8XXX_INIT_DDR_SUPPORT) += ddr/fsl/
 obj-$(CONFIG_ARMADA_38X) += ddr/marvell/a38x/
 obj-$(CONFIG_ARMADA_XP) += ddr/marvell/axp/
 obj-$(CONFIG_ALTERA_SDRAM) += ddr/altera/
-obj-$(CONFIG_SPL_POWER_SUPPORT) += power/ power/pmic/
-obj-$(CONFIG_SPL_POWER_SUPPORT) += power/regulator/
-obj-$(CONFIG_SPL_POWER_SUPPORT) += power/fuel_gauge/
+obj-$(CONFIG_SPL_POWER_SUPPORT) += power/
+obj-$(CONFIG_SPL_DM_PMIC) += power/pmic/
+obj-$(CONFIG_SPL_DM_REGULATOR) += power/regulator/
+obj-$(CONFIG_SPL_DM_FUEL_GAUGE) += power/fuel_gauge/
 obj-$(CONFIG_SPL_PWM_SUPPORT) += pwm/
 obj-$(CONFIG_SPL_MTD_SUPPORT) += mtd/
 obj-$(CONFIG_SPL_ONENAND_SUPPORT) += mtd/onenand/
@@ -60,6 +62,7 @@ obj-$(CONFIG_SPL_MMC_SUPPORT) += block/
 obj-$(CONFIG_SPL_MTD_SUPPORT) += block/
 obj-$(CONFIG_SPL_FPGA_SUPPORT) += fpga/
 obj-$(CONFIG_SPL_RKNAND_SUPPORT) += rknand/
+obj-$(CONFIG_SPL_RKNAND_SUPPORT) += block/
 endif
 endif
 

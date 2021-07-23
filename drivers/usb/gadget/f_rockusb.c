@@ -6,6 +6,8 @@
  */
 
 #include <asm/io.h>
+#include <android_avb/avb_ops_user.h>
+#include <android_avb/rk_avb_ops_user.h>
 #include <asm/arch/boot_mode.h>
 #include <asm/arch/chip_info.h>
 #include <write_keybox.h>
@@ -14,7 +16,6 @@
 #ifdef CONFIG_ROCKCHIP_VENDOR_PARTITION
 #include <asm/arch/vendor.h>
 #endif
-
 #include <rockusb.h>
 
 #define ROCKUSB_INTERFACE_CLASS	0xff
@@ -87,6 +88,10 @@ int g_dnl_bind_fixup(struct usb_device_descriptor *dev, const char *name)
 		/* Fix to Google's VID and PID */
 		dev->idVendor  = __constant_cpu_to_le16(0x18d1);
 		dev->idProduct = __constant_cpu_to_le16(0xd00d);
+	} else if (!strncmp(name, "usb_dnl_dfu", 11)) {
+		/* Fix to Rockchip's VID and PID for DFU */
+		dev->idVendor  = cpu_to_le16(0x2207);
+		dev->idProduct = cpu_to_le16(0x0107);
 	}
 
 	return 0;
@@ -236,6 +241,15 @@ static int rkusb_do_read_flash_info(struct fsg_common *common,
 			finfo.block_size = mtd->erasesize >> 9;
 			finfo.page_size = mtd->writesize >> 9;
 		}
+	}
+
+	if (desc->if_type == IF_TYPE_MTD && desc->devnum == BLK_MTD_SPI_NOR) {
+		/* RV1126/RK3308 mtd spinor keep the former upgrade mode */
+#if !defined(CONFIG_ROCKCHIP_RV1126) && !defined(CONFIG_ROCKCHIP_RK3308)
+		finfo.block_size = 0x100; /* Aligned to 128KB */
+#else
+		finfo.block_size = ROCKCHIP_FLASH_BLOCK_SIZE;
+#endif
 	}
 
 	debug("Flash info: block_size= %x page_size= %x\n", finfo.block_size,
@@ -440,7 +454,7 @@ static int rkusb_do_vs_write(struct fsg_common *common)
 					curlun->sense_data = SS_WRITE_ERROR;
 					return -EIO;
 				}
-			} else {
+			} else if (type == 1) {
 				/* RPMB */
 				rc =
 				write_keybox_to_secure_storage((u8 *)data,
@@ -449,6 +463,23 @@ static int rkusb_do_vs_write(struct fsg_common *common)
 					curlun->sense_data = SS_WRITE_ERROR;
 					return -EIO;
 				}
+			} else if (type == 2) {
+				/* security storage */
+#ifdef CONFIG_RK_AVB_LIBAVB_USER
+				debug("%s call rk_avb_write_perm_attr %d, %d\n",
+				      __func__, vhead->id, vhead->size);
+				rc = rk_avb_write_perm_attr(vhead->id,
+							    (char __user *)data,
+							    vhead->size);
+				if (rc < 0) {
+					curlun->sense_data = SS_WRITE_ERROR;
+					return -EIO;
+				}
+#else
+				printf("Please enable CONFIG_RK_AVB_LIBAVB_USER\n");
+#endif
+			} else {
+				return -EINVAL;
 			}
 
 			common->residue -= common->data_size;
@@ -514,7 +545,7 @@ static int rkusb_do_vs_read(struct fsg_common *common)
 				return -EIO;
 			}
 			vhead->size = rc;
-		} else {
+		} else if (type == 1) {
 			/* RPMB */
 			rc =
 			read_raw_data_from_secure_storage((u8 *)data,
@@ -524,6 +555,20 @@ static int rkusb_do_vs_read(struct fsg_common *common)
 				return -EIO;
 			}
 			vhead->size = rc;
+		} else if (type == 2) {
+			/* security storage */
+#ifdef CONFIG_RK_AVB_LIBAVB_USER
+			rc = rk_avb_read_perm_attr(vhead->id,
+						   (char __user *)data,
+						   vhead->size);
+			if (rc < 0)
+				return -EIO;
+			vhead->size = rc;
+#else
+			printf("Please enable CONFIG_RK_AVB_LIBAVB_USER!\n");
+#endif
+		} else {
+			return -EINVAL;
 		}
 
 		common->residue   -= common->data_size;
@@ -563,6 +608,11 @@ static int rkusb_do_read_capacity(struct fsg_common *common,
 	    (devnum == BLK_MTD_NAND ||
 	    devnum == BLK_MTD_SPI_NAND))
 		buf[0] |= (1 << 6);
+
+#if !defined(CONFIG_ROCKCHIP_RV1126) && !defined(CONFIG_ROCKCHIP_RK3308)
+	if (type == IF_TYPE_MTD && devnum == BLK_MTD_SPI_NOR)
+		buf[0] |= (1 << 6);
+#endif
 
 #if defined(CONFIG_ROCKCHIP_RK3568)
 	buf[1] = BIT(0);

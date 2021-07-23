@@ -5,6 +5,7 @@
  */
 #include <common.h>
 #include <adc.h>
+#include <android_ab.h>
 #include <android_bootloader.h>
 #include <android_image.h>
 #include <boot_rkimg.h>
@@ -416,13 +417,18 @@ static int get_resource_base_sector(struct blk_desc *dev_desc,
 #ifdef CONFIG_ANDROID_BOOT_IMAGE
 	struct andr_img_hdr *hdr;
 	u32 os_ver = 0, os_lvl;
+	const char *part_boot = PART_BOOT;
 
 	/*
-	 * Anyway, we must read android hdr firstly from boot partition to get
-	 * the 'os_version' for android_bcb_msg_sector_offset(), in order to
-	 * confirm BCB message offset of *MISC* partition.
+	 * Anyway, we must read android hdr firstly from boot/recovery partition
+	 * to get the 'os_version' for android_bcb_msg_sector_offset(), in order
+	 * to confirm BCB message offset of *MISC* partition.
 	 */
-	if (part_get_info_by_name(dev_desc, PART_BOOT, &part) < 0)
+#ifdef CONFIG_ANDROID_AB
+	part_boot = ab_can_find_recovery_part() ? PART_RECOVERY : PART_BOOT;
+#endif
+
+	if (part_get_info_by_name(dev_desc, part_boot, &part) < 0)
 		goto resource_part;
 
 	hdr = populate_andr_img_hdr(dev_desc, &part);
@@ -586,10 +592,47 @@ int rockchip_read_resource_file(void *buf, const char *name,
 #define KEY_WORDS_ADC_CTRL	"#_"
 #define KEY_WORDS_ADC_CH	"_ch"
 #define KEY_WORDS_GPIO		"#gpio"
-#define GPIO_SWPORT_DDR		0x04
-#define GPIO_EXT_PORT		0x50
 #define MAX_ADC_CH_NR		10
 #define MAX_GPIO_NR		10
+
+#ifdef CONFIG_ROCKCHIP_GPIO_V2
+#define GPIO_SWPORT_DDR		0x08
+#define GPIO_EXT_PORT		0x70
+#define WMSK_SETBIT(n)		(n << 16 | n)
+#define WMSK_CLRBIT(n)		(n << 16)
+#define REG_PLUS4(off, n)	(off + (n >= BIT(16) ? 4 : 0))
+#define BIT_SUB16(n)		(n >= BIT(16) ? (n >> 16) : n)
+
+static int gpio_read(fdt_addr_t gpio_addr,
+		     int gpio_bank, int gpio_pin)
+{
+	uint32_t offset, bit;
+
+	bit = gpio_bank * 8 + gpio_pin;
+
+	offset = REG_PLUS4(GPIO_SWPORT_DDR, bit);
+	bit = BIT_SUB16(bit);
+	writel(WMSK_CLRBIT(bit), gpio_addr + offset);
+
+	return readl(gpio_addr + GPIO_EXT_PORT);
+}
+
+#else
+#define GPIO_SWPORT_DDR		0x04
+#define GPIO_EXT_PORT		0x50
+
+static int gpio_read(fdt_addr_t gpio_addr,
+		     int gpio_bank, int gpio_pin)
+{
+	uint32_t val;
+
+	val = readl(gpio_addr + GPIO_SWPORT_DDR);
+	val &= ~(1 << (gpio_bank * 8 + gpio_pin));
+	writel(val, gpio_addr + GPIO_SWPORT_DDR);
+
+	return readl(gpio_addr + GPIO_EXT_PORT);
+}
+#endif
 
 /*
  * How to make it works ?
@@ -684,8 +727,7 @@ static int gpio_parse_base_address(fdt_addr_t *gpio_base_addr)
 {
 	static int initialized;
 	ofnode parent, node;
-	const char *name;
-	int idx, nr = 0;
+	int idx = 0;
 
 	if (initialized)
 		return 0;
@@ -698,23 +740,15 @@ static int gpio_parse_base_address(fdt_addr_t *gpio_base_addr)
 
 	ofnode_for_each_subnode(node, parent) {
 		if (!ofnode_get_property(node, "gpio-controller", NULL)) {
-			debug("   - Can't find gpio-controller\n");
+			debug("   - Not gpio controller node\n");
 			continue;
 		}
-
-		name = ofnode_get_name(node);
-		if (!is_digit((char)*(name + 4))) {
-			debug("   - bad gpio node name: %s\n", name);
-			continue;
-		}
-
-		nr++;
-		idx = *(name + 4) - '0';
 		gpio_base_addr[idx] = ofnode_get_addr(node);
 		debug("   - gpio%d: 0x%x\n", idx, (uint32_t)gpio_base_addr[idx]);
+		idx++;
 	}
 
-	if (nr == 0) {
+	if (idx == 0) {
 		debug("   - parse gpio address failed\n");
 		return -EINVAL;
 	}
@@ -735,19 +769,19 @@ static int gpio_parse_base_address(fdt_addr_t *gpio_base_addr)
  *    eg: ...#gpio0a6=1#gpio1c2=0....dtb
  *
  * 2. U-Boot dtsi about gpio node:
- *    (1) enable "u-boot,dm-pre-reloc;" for all gpio node;
+ *    (1) enable "u-boot,dm-pre-reloc;" for [all] gpio node;
  *    (2) set all gpio status "disabled"(Because we just want their property);
  */
 static int rockchip_read_dtb_by_gpio(const char *file_name)
 {
 	static uint32_t cached_v[MAX_GPIO_NR];
-	fdt_addr_t gpio_base_addr[MAX_GPIO_NR];
+	static fdt_addr_t gpio_base_addr[MAX_GPIO_NR];
 	int ret, found = 0, offset = strlen(KEY_WORDS_GPIO);
 	uint8_t port, pin, bank, lvl, val;
 	char *strgpio, *p;
 	uint32_t bit;
 
-	debug("%s\n", file_name);
+	debug("[*] %s\n", file_name);
 
 	/* Parse gpio address */
 	memset(gpio_base_addr, 0, sizeof(gpio_base_addr));
@@ -787,31 +821,28 @@ static int rockchip_read_dtb_by_gpio(const char *file_name)
 				debug("   - can't find gpio%d base address\n", port);
 				return 0;
 			}
-
-			/* Input mode */
-			val = readl(gpio_base_addr[port] + GPIO_SWPORT_DDR);
-			val &= ~(1 << (bank * 8 + pin));
-			writel(val, gpio_base_addr[port] + GPIO_SWPORT_DDR);
-
-			cached_v[port] =
-				readl(gpio_base_addr[port] + GPIO_EXT_PORT);
+			cached_v[port] = gpio_read(gpio_base_addr[port], bank, pin);
+			debug("   - gpio-val[%d]: 0x%08x\n", port, cached_v[port]);
 		}
 
 		/* Verify result */
 		bit = bank * 8 + pin;
 		val = cached_v[port] & (1 << bit) ? 1 : 0;
-
 		if (val == !!lvl) {
 			found = 1;
 			strgpio = strstr(p, KEY_WORDS_GPIO);
 		} else {
 			found = 0;
+			debug("   - parse: gpio%d%c%d=%d, read=%d %s\n",
+			      port, bank + 'a', pin, lvl, val, found ? "(Y)" : "(N)");
 			break;
 		}
 
 		debug("   - parse: gpio%d%c%d=%d, read=%d %s\n",
 		      port, bank + 'a', pin, lvl, val, found ? "(Y)" : "(N)");
 	}
+
+	debug("   # result: %s\n", found ? "OK" : "Try next one ..");
 
 	return found ? 0 : -ENOENT;
 }

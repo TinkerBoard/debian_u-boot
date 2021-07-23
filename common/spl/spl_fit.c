@@ -9,9 +9,10 @@
 #include <boot_rkimg.h>
 #include <errno.h>
 #include <image.h>
-#include <spl.h>
 #include <malloc.h>
 #include <mtd_blk.h>
+#include <spl.h>
+#include <spl_ab.h>
 #include <linux/libfdt.h>
 
 #ifndef CONFIG_SYS_BOOTM_LEN
@@ -196,9 +197,9 @@ static int spl_load_fit_image(struct spl_load_info *info, ulong sector,
 		load_addr = image_info->load_addr;
 
 	if (image_comp != IH_COMP_NONE && image_comp != IH_COMP_ZIMAGE) {
-		/* Empirically, 1MB is enough for U-Boot, tee and atf */
+		/* Empirically, 2MB is enough for U-Boot, tee and atf */
 		if (fit_image_get_comp_addr(fit, node, &comp_addr))
-			comp_addr = load_addr + SZ_1M;
+			comp_addr = load_addr + FIT_MAX_SPL_IMAGE_SZ;
 	} else {
 		comp_addr = load_addr;
 	}
@@ -331,9 +332,11 @@ static int spl_fit_append_fdt(struct spl_image_info *spl_image,
 	 * kernel FDT is for U-Boot if there is not valid one
 	 * from images, ie: resource.img, boot.img or recovery.img.
 	 */
-	node = fdt_subnode_offset(fit, images, FIT_KERNEL_FDT_PROP);
-	if (node < 0)
+	node = spl_fit_get_image_node(fit, images, FIT_FDT_PROP, 1);
+	if (node < 0) {
+		debug("%s: cannot find FDT node\n", __func__);
 		return ret;
+	}
 
 	image_info.load_addr =
 		(ulong)spl_image->fdt_addr + fdt_totalsize(spl_image->fdt_addr);
@@ -636,15 +639,15 @@ static int spl_internal_load_simple_fit(struct spl_image_info *spl_image,
 		/* Load the image and set up the spl_image structure */
 		ret = spl_load_fit_image(info, sector, fit, base_offset, node,
 					 &image_info);
-		if (!ret) {
-			if (image_info.entry_point == FDT_ERROR)
-				image_info.entry_point = image_info.load_addr;
+		if (ret)
+			return ret;
 
-			ret = spl_fit_standalone_release(image_info.entry_point);
-			if (ret)
-				printf("Start standalone fail, ret = %d\n",
-				       ret);
-		}
+		if (image_info.entry_point == FDT_ERROR)
+			image_info.entry_point = image_info.load_addr;
+
+		ret = spl_fit_standalone_release(image_info.entry_point);
+		if (ret)
+			printf("Start standalone fail, ret = %d\n", ret);
 
 		/* standalone is special one, continue to find others */
 		node = -1;
@@ -722,7 +725,7 @@ static int spl_internal_load_simple_fit(struct spl_image_info *spl_image,
 		ret = spl_load_fit_image(info, sector, fit, base_offset, node,
 					 &image_info);
 		if (ret < 0)
-			continue;
+			return ret;
 
 		if (os_type == IH_OS_U_BOOT) {
 #if CONFIG_IS_ENABLED(ATF)
@@ -790,10 +793,19 @@ int spl_load_simple_fit(struct spl_image_info *spl_image,
 #ifdef CONFIG_SPL_KERNEL_BOOT
 			ret = spl_load_kernel_fit(spl_image, info);
 #endif
-			return ret;
+			break;
 		}
 	}
-
+#ifdef CONFIG_SPL_AB
+	/*
+	 * If boot fail in spl, spl must decrease 1. If boot
+	 * successfully, it is no need to do that and U-boot will
+	 * always to decrease 1. If in thunderboot process,
+	 * always need to decrease 1.
+	 */
+	if (IS_ENABLED(CONFIG_SPL_KERNEL_BOOT) || ret)
+		spl_ab_decrease_tries(info->dev);
+#endif
 	return ret;
 }
 
