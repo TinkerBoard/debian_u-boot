@@ -81,10 +81,8 @@ int check_force_enter_ums_mode(void)
 
 	printf("PC event = 0x%x\n", readl(RKIO_GPIO6_PHYS + GPIO_EXT_PORT)&0x20);
 	if((readl(RKIO_GPIO6_PHYS + GPIO_EXT_PORT)&0x20)==0x20) {
-		// SDP detected, enable EMMC and unlock usb current limit
-		printf("usb connected to SDP, force enter ums mode\n");
-		rk3288_maskrom_disable(true);
-		usb_current_limit_unlock(true);
+		// SDP detected
+		printf("usb connected to SDP, should enter ums mode\n");
 		return 1;
 	} else {
 		usb_current_limit_unlock(false);

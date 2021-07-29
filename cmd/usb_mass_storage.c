@@ -157,6 +157,9 @@ static int do_usb_mass_storage(cmd_tbl_t *cmdtp, int flag,
 		devnum  = argv[2];
 	}
 
+	usb_current_limit_unlock(true);
+	rk3288_maskrom_disable(true);
+
 	rc = ums_init(devtype, devnum);
 	if (rc < 0)
 		return CMD_RET_FAILURE;
@@ -230,9 +233,6 @@ static int do_usb_mass_storage(cmd_tbl_t *cmdtp, int flag,
 			if (rc == -ETIMEDOUT)
 				printf("\rWaiting usb connection timeout, exit ums mode.\n");
 
-			rk3288_maskrom_disable(false);
-			usb_current_limit_unlock(false);
-
 			rc = CMD_RET_SUCCESS;
 			goto cleanup_register;
 		}
@@ -244,6 +244,9 @@ cleanup_board:
 	usb_gadget_release(controller_index);
 cleanup_ums_init:
 	ums_fini();
+
+	rk3288_maskrom_disable(false);
+	usb_current_limit_unlock(false);
 
 	return rc;
 }
