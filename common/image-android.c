@@ -48,6 +48,8 @@ struct hw_config
 	int pcm, pcm_i2s;
 	int uart1, uart2, uart3, uart4;
 
+	int ums;
+
 	int overlay_count;
 	char **overlay_file;
 };
@@ -232,6 +234,40 @@ invalid_line:
 	return i;
 }
 
+static unsigned long get_conf_value(char *text, struct hw_config *hw_conf)
+{
+	int i = 0;
+	if (memcmp(text, "auto_ums=", 9) == 0) {
+		i = 9;
+		if(memcmp(text + i, "on", 2) == 0) {
+			hw_conf->ums = 1;
+			i = i + 2;
+		} else if(memcmp(text + i, "off", 3) == 0) {
+			hw_conf->ums = -1;
+			i = i + 3;
+		} else
+			goto invalid_line;
+	} else
+		goto invalid_line;
+
+	while(*(text + i) != 0x00)
+	{
+		if(*(text + (i++)) == 0x0a)
+			break;
+	}
+	return i;
+
+invalid_line:
+	//It's not a legal line, skip it.
+	//printf("get_value: illegal line\n");
+	while(*(text + i) != 0x00)
+	{
+		if(*(text + (i++)) == 0x0a)
+			break;
+	}
+	return i;
+}
+
 static unsigned long get_append(char *text)
 {
 	int i = 0;
@@ -350,6 +386,9 @@ static unsigned long hw_parse_property(char *text, struct hw_config *hw_conf)
 	if (memcmp(text, "intf:", 5) == 0) {
 		i = 5;
 		i = i + get_intf_value(text + i, hw_conf);
+	} else if (memcmp(text, "conf:",  5) == 0) {
+		i = 5;
+		i = i + get_conf_value(text + i, hw_conf);
 	} else if(memcmp(text, "overlay=", 8) == 0) {
 		i = 8;
 		count_overlay(text + i, hw_conf);
@@ -1323,9 +1362,15 @@ static int android_image_separate(struct andr_img_hdr *hdr,
 		printf("intf.uart2 = %d\n", hw_conf.uart2);
 		printf("intf.uart3 = %d\n", hw_conf.uart3);
 		printf("intf.uart4 = %d\n", hw_conf.uart4);
+		printf("conf.ums = %d\n", hw_conf.ums);
 
 		for (int i = 0; i < hw_conf.overlay_count; i++)
 			printf("get overlay name: %s\n", hw_conf.overlay_file[i]);
+	}
+
+	if (rockchip_get_boot_mode() == BOOT_MODE_UNDEFINE && check_force_enter_ums_mode() && hw_conf.ums != -1) {
+		printf("enter UMS!\n");
+		run_command("ums 1 mmc 0", 0);
 	}
 
 	if (android_image_check_header(hdr)) {

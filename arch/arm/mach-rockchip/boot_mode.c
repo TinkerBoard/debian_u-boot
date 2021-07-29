@@ -294,8 +294,6 @@ int setup_boot_mode(void)
 	char env_preboot[256] = {0};
 
 	int boot_mode = rockchip_get_boot_mode();
-	if ( boot_mode == BOOT_MODE_UNDEFINE && check_force_enter_ums_mode())
-		boot_mode = BOOT_MODE_UMS;
 
 	switch (boot_mode) {
 	case BOOT_MODE_BOOTLOADER:
