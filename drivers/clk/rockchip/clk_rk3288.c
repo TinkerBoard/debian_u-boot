@@ -55,6 +55,41 @@ static struct pll_div rk3288_pll_rates[] = {
 	RK3288_PLL_RATE(297000000, 1, 99, 8, 16),
 };
 
+#define RK3066_PLL_RATE_NB(_rate, _nr, _nf, _no, _nb)		\
+{								\
+	.rate	= _rate##U,					\
+	.nr = _nr,						\
+	.nf = _nf,						\
+	.no = _no,						\
+	.nb = _nb,						\
+}
+
+static struct pll_div rk3288_npll_rates[] = {
+	RK3066_PLL_RATE_NB(594000000, 1, 99, 4, 32),
+	RK3066_PLL_RATE_NB(585000000, 6, 585, 4, 32),
+	RK3066_PLL_RATE_NB(432000000, 3, 216, 4, 32),
+	RK3066_PLL_RATE_NB(426000000, 3, 213, 4, 32),
+	RK3066_PLL_RATE_NB(400000000, 1, 100, 6, 32),
+	RK3066_PLL_RATE_NB(342000000, 3, 171, 4, 32),
+	RK3066_PLL_RATE_NB(297000000, 2, 198, 8, 16),
+	RK3066_PLL_RATE_NB(270000000, 1, 135, 12, 32),
+	RK3066_PLL_RATE_NB(260000000, 1, 130, 12, 32),
+	RK3066_PLL_RATE_NB(170000000, 1, 170, 12, 32),//1920*1080@75 acer KG221Q
+	RK3066_PLL_RATE_NB(148500000, 1, 99, 16, 32),
+	RK3066_PLL_RATE_NB(146250000, 6, 585, 16, 32),
+	RK3066_PLL_RATE_NB(108000000, 1, 54, 12, 32),
+	RK3066_PLL_RATE_NB(106500000, 4, 213, 12, 32),
+	RK3066_PLL_RATE_NB(85750000, 4, 343, 12, 32),//1366*768@60 iex
+	RK3066_PLL_RATE_NB(85500000, 4, 171, 12, 32),
+	RK3066_PLL_RATE_NB(85500000, 2, 171, 12, 32),//1360*768@60 iex
+	RK3066_PLL_RATE_NB(84750000, 2, 226, 16, 32),//1360*768@59.8
+	RK3066_PLL_RATE_NB(78750000, 4, 210, 16, 32),//1024*768@75 iex
+	RK3066_PLL_RATE_NB(78750000, 1, 210, 16, 32),//1024*768@75
+	RK3066_PLL_RATE_NB(74250000, 4, 198, 16, 32),
+	RK3066_PLL_RATE_NB(33900000, 5, 226, 16, 32),//Waveshare DWE2100 800x480@60
+	RK3066_PLL_RATE_NB(33000000, 1, 22, 16, 32),//800x480@67
+	RK3066_PLL_RATE_NB(27000000, 1, 72, 16, 32),//720x576@50
+};
 #ifndef CONFIG_SPL_BUILD
 #define RK3288_CLK_DUMP(_id, _name, _iscru)	\
 {						\
@@ -221,6 +256,18 @@ struct pll_div *rkclk_get_pll_config(ulong freq_hz)
 	for (i = 0; i < rate_count; i++) {
 		if (freq_hz == rk3288_pll_rates[i].rate)
 			return &rk3288_pll_rates[i];
+	}
+	return NULL;
+}
+
+struct pll_div *rkclk_get_npll_config(ulong freq_hz)
+{
+	unsigned int rate_count = ARRAY_SIZE(rk3288_npll_rates);
+	int i;
+
+	for (i = 0; i < rate_count; i++) {
+		if (freq_hz == rk3288_npll_rates[i].rate)
+			return &rk3288_npll_rates[i];
 	}
 	return NULL;
 }
@@ -426,6 +473,98 @@ static int pll_para_config(ulong freq_hz, struct pll_div *div, uint *ext_div)
 	return 0;
 }
 
+static int npll_para_config(ulong freq_hz, struct pll_div *div, uint *ext_div)
+{
+	struct pll_div *best_div = NULL;
+	uint ref_khz = OSC_HZ / 1000, nr, nf = 0;
+	uint fref_khz;
+	uint diff_khz, best_diff_khz;
+	const uint max_nr = 1 << 6, max_nf = 1 << 12, max_no = 1 << 4;
+	uint vco_khz;
+	uint no = 1;
+	uint freq_khz = freq_hz / 1000;
+
+	if (!freq_hz) {
+		printf("%s: the frequency can not be 0 Hz\n", __func__);
+		return -EINVAL;
+	}
+
+	*ext_div =1;
+	best_div = rkclk_get_npll_config(freq_hz);
+	if (best_div) {
+		div->nr = best_div->nr;
+		div->nf = best_div->nf;
+		div->no = best_div->no;
+		div->nb = best_div->nb;
+		printf("npll_para_config freq_hz=%lu div->nr=%u div->nf=%u div->no=%u div->nb=%u *ext_div=%u\n", freq_hz, div->nr, div->nf, div->no, div->nb, *ext_div);
+		return 0;
+	}
+
+	no = DIV_ROUND_UP(VCO_MIN_KHZ, freq_khz);
+	if (ext_div) {
+		*ext_div = DIV_ROUND_UP(PLL_LIMIT_FREQ, freq_hz);
+		no = DIV_ROUND_UP(no, *ext_div);
+	}
+
+	best_div = rkclk_get_npll_config(freq_hz * (*ext_div));
+	if (best_div) {
+		div->nr = best_div->nr;
+		div->nf = best_div->nf;
+		div->no = best_div->no;
+		div->nb = best_div->nb;
+		printf("npll_para_config freq_hz=%lu div->nr=%u div->nf=%u div->no=%u div->nb=%u *ext_div=%u\n", freq_hz * (*ext_div), div->nr,div->nf, div->no, div->nb, *ext_div);
+		return 0;
+	}
+
+	/* only even divisors (and 1) are supported */
+	if (no > 1)
+		no = DIV_ROUND_UP(no, 2) * 2;
+
+	vco_khz = freq_khz * no;
+	if (ext_div)
+		vco_khz *= *ext_div;
+
+	if (vco_khz < VCO_MIN_KHZ || vco_khz > VCO_MAX_KHZ || no > max_no) {
+		printf("%s: Cannot find out a supported VCO for Frequency (%luHz).\n",
+		       __func__, freq_hz);
+		return -1;
+	}
+
+	div->no = no;
+
+	best_diff_khz = vco_khz;
+	for (nr = 1; nr < max_nr && best_diff_khz; nr++) {
+		fref_khz = ref_khz / nr;
+		if (fref_khz < FREF_MIN_KHZ)
+			break;
+		if (fref_khz > FREF_MAX_KHZ)
+			continue;
+
+		nf = vco_khz / fref_khz;
+		if (nf >= max_nf)
+			continue;
+		diff_khz = vco_khz - nf * fref_khz;
+		if (nf + 1 < max_nf && diff_khz > fref_khz / 2) {
+			nf++;
+			diff_khz = fref_khz - diff_khz;
+		}
+
+		if (diff_khz >= best_diff_khz)
+			continue;
+
+		best_diff_khz = diff_khz;
+		div->nr = nr;
+		div->nf = nf;
+	}
+
+	if (best_diff_khz > 4 * 1000) {
+		printf("%s: Failed to match output frequency %lu, difference is %u Hz, exceed 4MHZ\n",
+		       __func__, freq_hz, best_diff_khz * 1000);
+		return -EINVAL;
+	}
+
+	return 0;
+}
 static int rockchip_mac_set_clk(struct rk3288_cru *cru, uint freq)
 {
 	ulong ret;
@@ -504,7 +643,33 @@ static int rockchip_vop_set_clk(struct rk3288_cru *cru, struct rk3288_grf *grf,
 			parent = DCLK_VOP0_SELECT_GPLL;
 			lcdc_div = DIV_ROUND_UP(gpll_rate,
 						rate_hz);
-		} else {
+		} else  if (ret == DCLK_VOP0_SELECT_NPLL){
+			struct pll_div npll_config = {0};
+			int i = 0;
+
+			parent = DCLK_VOP0_SELECT_NPLL;
+
+			ret = npll_para_config(rate_hz, &npll_config, &lcdc_div);
+			if (ret) {
+				printf("%s: CAN NOT find the config for npll\n", __func__);
+				return ret;
+			}
+
+			rk_clrsetreg(&cru->cru_mode_con, NPLL_MODE_MASK,
+				     NPLL_MODE_SLOW << NPLL_MODE_SHIFT);
+			rkclk_set_pll(cru, CLK_NEW, &npll_config);
+
+			/* waiting for pll lock */
+			while (i++ < 20000) {
+				if (readl(&grf->soc_status[1]) &
+					  SOCSTS_NPLL_LOCK)
+					break;
+				mdelay(1);
+			}
+
+			rk_clrsetreg(&cru->cru_mode_con, NPLL_MODE_MASK,
+				     NPLL_MODE_NORMAL << NPLL_MODE_SHIFT);
+		}else {
 			parent = DCLK_VOP0_SELECT_NPLL;
 			lcdc_div = DIV_ROUND_UP(npll_rate,
 						rate_hz);
