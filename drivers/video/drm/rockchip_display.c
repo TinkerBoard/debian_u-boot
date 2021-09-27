@@ -827,6 +827,19 @@ static int display_init(struct display_state *state)
 	if (!strcmp(compatible, "rockchip,rk3568-mipi-dsi"))
 		conn_state->mode.flags |= DRM_MODE_FLAG_PPIXDATA;
 
+	if (conn_state->type == DRM_MODE_CONNECTOR_HDMIA && mode->hdisplay > 1080) {
+		mode->clock = 148500;
+		mode->hdisplay = 1920;
+		mode->hsync_start = 2008;
+		mode->hsync_end = 2052;
+		mode->htotal = 2200;
+		mode->vdisplay = 1080;
+		mode->vsync_start = 1084;
+		mode->vsync_end = 1089;
+		mode->vtotal = 1125;
+		mode->flags = 0x05;
+	}
+
 	printf("Detailed mode clock %u kHz, flags[%x]\n"
 	       "    H: %04d %04d %04d %04d\n"
 	       "    V: %04d %04d %04d %04d\n"
